@@ -5,69 +5,97 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>noneface.live</title>
   <style>
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: linear-gradient(135deg, #0f0f0f, #1e1e1e);
+      background: radial-gradient(circle at top, #2b2b2b, #0f0f0f 60%);
       color: white;
+      min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
       text-align: center;
-      padding: 20px;
+      padding: 24px;
     }
-
-    .container {
-      max-width: 700px;
-    }
-
+    .container { max-width: 850px; }
     h1 {
-      font-size: 4rem;
+      font-size: clamp(3rem, 9vw, 5.5rem);
       margin-bottom: 10px;
       letter-spacing: 2px;
     }
-
     p {
-      font-size: 1.2rem;
+      font-size: 1.15rem;
       line-height: 1.8;
       color: #d0d0d0;
+      margin: 0 auto;
+      max-width: 720px;
     }
-
-    .highlight {
-      color: #ffffff;
-      font-weight: bold;
+    .highlight { color: #ffffff; font-weight: bold; }
+    .actions {
+      margin-top: 34px;
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
     }
-
     .button {
-      margin-top: 30px;
       display: inline-block;
-      padding: 14px 28px;
-      border: 1px solid white;
-      border-radius: 10px;
+      padding: 14px 26px;
+      border: 1px solid rgba(255,255,255,.85);
+      border-radius: 12px;
       text-decoration: none;
       color: white;
-      transition: 0.3s ease;
+      transition: 0.25s ease;
+      background: rgba(255,255,255,.04);
     }
-
-    .button:hover {
-      background: white;
-      color: black;
+    .button:hover { background: white; color: black; transform: translateY(-2px); }
+    .button.primary { background: white; color: black; }
+    .games {
+      margin-top: 46px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
     }
+    .card {
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      border-radius: 18px;
+      padding: 22px;
+      text-align: left;
+      backdrop-filter: blur(10px);
+    }
+    .card h2 { margin: 0 0 10px; }
+    .card p { font-size: .98rem; line-height: 1.55; }
   </style>
 </head>
 <body>
-  <div class="container">
+  <main class="container">
     <h1>noneface.live</h1>
     <p>
       Welcome to my digital space.
       <br><br>
       I'm <span class="highlight">Sayed Shubbar</span>, a programming student from Bahrain building systems, dashboards, automation workflows, and modern web applications.
       <br><br>
-      This website will soon showcase my projects, experiments, and development journey.
+      This website will showcase my projects, experiments, and development journey.
     </p>
 
-    <a class="button" href="https://github.com/AlMosawi1" target="_blank">Visit My GitHub</a>
-  </div>
+    <div class="actions">
+      <a class="button primary" href="games/sudoku.html">Play Sudoku</a>
+      <a class="button primary" href="games/xo.html">Play X/O</a>
+      <a class="button" href="https://github.com/AlMosawi1" target="_blank">Visit My GitHub</a>
+    </div>
+
+    <section class="games">
+      <article class="card">
+        <h2>Sudoku</h2>
+        <p>A 9x9 Sudoku board with 3x3 boxes, random puzzles on refresh, and Easy, Medium, and Hard difficulties.</p>
+      </article>
+      <article class="card">
+        <h2>X/O</h2>
+        <p>Classic tic-tac-toe with Random mode and Impossible mode. Choose whether you play as X or O.</p>
+      </article>
+    </section>
+  </main>
 </body>
 </html>
