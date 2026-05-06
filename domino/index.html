@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Domino Multiplayer | noneface.live</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+*{box-sizing:border-box}:root{--bg1:#2f2f2f;--bg2:#0e0e0e;--text:#fff;--muted:#cfcfcf;--panel:rgba(255,255,255,.07);--border:rgba(255,255,255,.18);--accent:#fff;--danger:#ff4757;--ok:#2ed573}body.light{--bg1:#fff;--bg2:#e9eef5;--text:#111;--muted:#4b5563;--panel:rgba(0,0,0,.05);--border:rgba(0,0,0,.14);--accent:#111}body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,var(--bg1),var(--bg2) 65%);color:var(--text);min-height:100vh;padding:22px}.wrap{max-width:1100px;margin:auto}.top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:18px}.link,.btn,button,input,select{border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);padding:12px 14px;font-size:1rem}.link{text-decoration:none}.btn,button{cursor:pointer}button:hover,.primary{background:var(--accent);color:var(--bg2)}select option{color:#111}h1{font-size:clamp(2.3rem,8vw,4.7rem);text-align:center;margin:10px 0}p{color:var(--muted);line-height:1.6}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.card{border:1px solid var(--border);background:var(--panel);border-radius:18px;padding:18px}.hidden{display:none!important}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0}.status{font-weight:bold;min-height:28px;text-align:center}.roomCode{font-size:2rem;letter-spacing:4px;text-align:center;border:1px dashed var(--border);border-radius:14px;padding:14px;margin:12px 0}.players{display:grid;gap:10px}.player{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:12px;padding:10px;background:rgba(255,255,255,.04)}.danger{border-color:rgba(255,71,87,.6)!important}.board{min-height:150px;border:1px solid var(--border);border-radius:18px;padding:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;background:rgba(0,0,0,.12)}.hand{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.domino{width:54px;height:100px;border:2px solid var(--text);border-radius:10px;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:space-around;font-weight:bold;font-size:1.5rem;cursor:pointer}.domino.small{width:42px;height:76px;font-size:1.1rem}.divider{width:80%;height:2px;background:var(--border)}.score{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}.score span{border:1px solid var(--border);border-radius:12px;padding:10px 14px;background:var(--panel)}.note{font-size:.92rem}.serverBox{max-width:650px;margin:0 auto 16px}.serverBox input{width:min(100%,420px)}
+</style>
+</head>
+<body>
+<main class="wrap">
+<div class="top"><a class="link" href="../index.html">← Home</a><button onclick="toggleTheme()">Light/Dark</button></div>
+<h1>Domino Multiplayer</h1>
+<p style="text-align:center">Host a 1v1 or 2v2 room, share the 6-character code, and play live with real players.</p>
+
+<section class="card serverBox">
+<h3>Server connection</h3>
+<p class="note">For laptop testing, use something like <b>http://localhost:3000</b>. For public play, replace it with your deployed backend URL.</p>
+<div class="row"><input id="serverUrl" placeholder="Backend URL" value="http://localhost:3000"><button onclick="connectServer()">Connect</button></div>
+<div id="connectStatus" class="status">Not connected</div>
+</section>
+
+<section id="menu" class="grid">
+<div class="card"><h2>Host a Game</h2><input id="hostName" placeholder="Your display name"><div class="row"><select id="mode"><option value="1v1">1v1</option><option value="2v2">2v2</option></select><input id="entryScore" type="number" value="21" placeholder="Entry score"><input id="targetScore" type="number" value="100" placeholder="Winning score"></div><button class="primary" onclick="hostGame()">Host Game</button></div>
+<div class="card"><h2>Join a Game</h2><input id="joinName" placeholder="Your display name"><input id="joinCode" placeholder="Room code" maxlength="6"><button class="primary" onclick="joinGame()">Join Game</button></div>
+</section>
+
+<section id="room" class="hidden">
+<div class="card"><h2>Room</h2><div class="roomCode" id="roomCode">------</div><div class="score"><span id="modeText">Mode: -</span><span id="entryText">Entry: -</span><span id="targetText">Target: -</span><span id="turnText">Turn: -</span></div></div>
+<div class="grid" style="margin-top:16px"><div class="card"><h2>Players</h2><div id="players" class="players"></div><button id="startBtn" class="primary hidden" onclick="startGame()">Start Game</button></div><div class="card"><h2>Game Board</h2><div id="board" class="board">Waiting for the game to start...</div></div></div>
+<div class="card" style="margin-top:16px"><h2>Your Hand</h2><p class="note">Click a domino to play it. This first version sends the move to the server; full legal edge placement will be improved in the next version.</p><div id="hand" class="hand"></div></div>
+</section>
+
+<div id="status" class="status"></div>
+</main>
+<script>
+let socket=null,currentRoom=null,myId=null,myHand=[],roomState=null;
+function applyTheme(){document.body.classList.toggle('light',localStorage.getItem('theme')==='light')}function toggleTheme(){localStorage.setItem('theme',document.body.classList.contains('light')?'dark':'light');applyTheme()}applyTheme();
+function setStatus(msg){document.getElementById('status').textContent=msg}
+function connectServer(){const url=document.getElementById('serverUrl').value.trim();if(!url)return;socket=io(url,{transports:['websocket','polling']});socket.on('connect',()=>{myId=socket.id;document.getElementById('connectStatus').textContent='Connected: '+socket.id;setStatus('Connected to server.')});socket.on('connect_error',()=>{document.getElementById('connectStatus').textContent='Connection failed. Is the backend running?'});socket.on('roomJoined',room=>{currentRoom=room.code;roomState=room;showRoom(room)});socket.on('roomUpdated',room=>{roomState=room;showRoom(room)});socket.on('gameStarted',data=>{roomState=data.room;showRoom(data.room);setStatus('Game started.')});socket.on('yourHand',hand=>{myHand=hand;renderHand()});socket.on('boardUpdated',data=>{if(roomState){roomState.board=data.board;roomState.turn=data.turn}renderBoard(data.board);updateTurn(data.turn);setStatus('A domino was played.')});socket.on('errorMessage',setStatus);socket.on('kicked',()=>{alert('You were kicked from the room.');location.reload()});socket.on('banned',()=>{alert('You were banned from the room.');location.reload()})}
+function requireSocket(){if(!socket||!socket.connected){setStatus('Connect to the backend server first.');return false}return true}
+function hostGame(){if(!requireSocket())return;socket.emit('hostGame',{name:document.getElementById('hostName').value||'Host',mode:document.getElementById('mode').value,entryScore:Number(document.getElementById('entryScore').value||21),targetScore:Number(document.getElementById('targetScore').value||100)})}
+function joinGame(){if(!requireSocket())return;socket.emit('joinGame',{name:document.getElementById('joinName').value||'Player',code:document.getElementById('joinCode').value.trim().toUpperCase()})}
+function showRoom(room){document.getElementById('menu').classList.add('hidden');document.getElementById('room').classList.remove('hidden');document.getElementById('roomCode').textContent=room.code;document.getElementById('modeText').textContent='Mode: '+room.mode;document.getElementById('entryText').textContent='Entry: '+room.entryScore;document.getElementById('targetText').textContent='Target: '+room.targetScore;updateTurn(room.turn);renderPlayers(room);renderBoard(room.board||[])}
+function renderPlayers(room){const list=document.getElementById('players');list.innerHTML='';const amHost=room.players.some(p=>p.id===myId&&p.host);document.getElementById('startBtn').classList.toggle('hidden',!amHost||room.started);room.players.forEach(p=>{const div=document.createElement('div');div.className='player';div.innerHTML='<span>'+p.name+(p.host?' 👑':'')+' | Team '+p.team+'</span>';if(amHost&&!p.host){const controls=document.createElement('span');const kick=document.createElement('button');kick.textContent='Kick';kick.onclick=()=>socket.emit('kickPlayer',{code:room.code,playerId:p.id});const ban=document.createElement('button');ban.textContent='Ban';ban.className='danger';ban.onclick=()=>socket.emit('banPlayer',{code:room.code,playerId:p.id});controls.append(kick,ban);div.appendChild(controls)}list.appendChild(div)})}
+function startGame(){socket.emit('startGame',currentRoom)}
+function dominoEl(d,small=false){const el=document.createElement('div');el.className='domino'+(small?' small':'');el.innerHTML='<div>'+d[0]+'</div><div class="divider"></div><div>'+d[1]+'</div>';return el}
+function renderHand(){const h=document.getElementById('hand');h.innerHTML='';myHand.forEach(d=>{const el=dominoEl(d);el.onclick=()=>playDomino(d);h.appendChild(el)})}
+function renderBoard(board){const b=document.getElementById('board');b.innerHTML='';if(!board||board.length===0){b.textContent='No dominoes played yet.';return}board.forEach(d=>b.appendChild(dominoEl(d,true)))}
+function playDomino(d){if(!roomState||roomState.turn!==myId){setStatus('Not your turn.');return}socket.emit('playDomino',{code:currentRoom,domino:d})}
+function updateTurn(turn){const el=document.getElementById('turnText');if(!turn){el.textContent='Turn: -';return}const p=roomState?.players?.find(x=>x.id===turn);el.textContent='Turn: '+(p?p.name:'Unknown')}
+</script>
+</body>
+</html>
