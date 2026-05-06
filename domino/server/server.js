@@ -24,6 +24,7 @@ function createDominoSet() {
   return set.sort(() => Math.random() - 0.5);
 }
 function neededPlayers(room) { return room.mode === '2v2' ? 4 : 2; }
+function sameDomino(a, b) { return a && b && ((a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0])); }
 function getEdges(room) {
   if (!room.board.length) return { left: null, right: null };
   return { left: room.board[0].domino[0], right: room.board[room.board.length - 1].domino[1] };
@@ -43,11 +44,47 @@ function orientForSide(room, domino, side) {
   return { ok: false };
 }
 function legalSides(room, domino) {
-  if (!room.board.length) return ['start'];
+  if (!room.board.length) {
+    if (room.firstRequired && !sameDomino(domino, room.firstRequired)) return [];
+    return ['start'];
+  }
   const sides = [];
   if (orientForSide(room, domino, 'left').ok) sides.push('left');
   if (orientForSide(room, domino, 'right').ok) sides.push('right');
   return sides;
+}
+function hasPlayable(room, player) { return player.hand.some(d => legalSides(room, d).length > 0); }
+function findStartingPlayer(room) {
+  let starter = null;
+  let required = null;
+  const doubleSixPlayer = room.players.find(p => p.hand.some(d => d[0] === 6 && d[1] === 6));
+  if (room.mode === '2v2') {
+    starter = doubleSixPlayer;
+    required = [6, 6];
+  } else {
+    if (doubleSixPlayer) {
+      starter = doubleSixPlayer;
+      required = [6, 6];
+    } else {
+      let best = null;
+      room.players.forEach(p => p.hand.forEach(d => {
+        if (d[0] === d[1] && (!best || d[0] > best.domino[0])) best = { player: p, domino: d };
+      }));
+      if (best) {
+        starter = best.player;
+        required = [...best.domino];
+      } else {
+        let high = null;
+        room.players.forEach(p => p.hand.forEach(d => {
+          const sum = d[0] + d[1];
+          if (!high || sum > high.sum) high = { player: p, domino: d, sum };
+        }));
+        starter = high.player;
+        required = [...high.domino];
+      }
+    }
+  }
+  return { starter, required };
 }
 function getPublicRoom(room) {
   return {
@@ -59,7 +96,9 @@ function getPublicRoom(room) {
     entryScore: room.entryScore,
     board: room.board,
     turn: room.turn,
-    neededPlayers: neededPlayers(room)
+    neededPlayers: neededPlayers(room),
+    boneyardCount: room.boneyard ? room.boneyard.length : 0,
+    firstRequired: room.firstRequired
   };
 }
 function broadcastRoom(room) { io.to(room.code).emit('roomUpdated', getPublicRoom(room)); }
@@ -68,6 +107,20 @@ function nextTurn(room, currentId) {
   const idx = room.players.findIndex(p => p.id === currentId);
   if (idx === -1 || !room.players.length) return null;
   return room.players[(idx + 1) % room.players.length].id;
+}
+function autoDrawForTurn(room) {
+  if (!room.started || !room.turn || !room.board.length) return;
+  const player = room.players.find(p => p.id === room.turn);
+  if (!player) return;
+  let drew = 0;
+  while (!hasPlayable(room, player) && room.boneyard.length > 0) {
+    player.hand.push(room.boneyard.shift());
+    drew++;
+  }
+  if (drew > 0) io.to(player.id).emit('autoDrew', { count: drew });
+  if (!hasPlayable(room, player) && room.boneyard.length === 0) {
+    room.turn = nextTurn(room, player.id);
+  }
 }
 function endWithWinner(room, winnerName, reason) {
   io.to(room.code).emit('gameWon', { winnerName, reason });
@@ -79,15 +132,11 @@ io.on('connection', socket => {
   socket.on('hostGame', data => {
     const code = generateCode();
     rooms[code] = {
-      code,
-      hostId: socket.id,
-      started: false,
-      banned: [],
+      code, hostId: socket.id, started: false, banned: [],
       mode: data.mode === '2v2' ? '2v2' : '1v1',
-      targetScore: Number(data.targetScore || 100),
-      entryScore: Number(data.entryScore || 21),
+      targetScore: Number(data.targetScore || 100), entryScore: Number(data.entryScore || 21),
       players: [{ id: socket.id, name: data.name || 'Host', host: true, hand: [], team: 1, score: 0 }],
-      board: [], turn: null, lastPlayedBy: null
+      board: [], turn: null, lastPlayedBy: null, boneyard: [], firstRequired: null
     };
     socket.join(code);
     socket.emit('roomJoined', getPublicRoom(rooms[code]));
@@ -135,9 +184,11 @@ io.on('connection', socket => {
     const dominoes = createDominoSet();
     room.board = [];
     room.players.forEach(p => { p.hand = dominoes.splice(0, 7); });
+    room.boneyard = dominoes;
+    const start = findStartingPlayer(room);
     room.started = true;
-    const starter = room.players.find(p => p.hand.some(d => d[0] === 6 && d[1] === 6));
-    room.turn = starter?.id || room.players[0].id;
+    room.turn = start.starter.id;
+    room.firstRequired = start.required;
     io.to(code).emit('gameStarted', { room: getPublicRoom(room) });
     sendHands(room);
   });
@@ -153,12 +204,13 @@ io.on('connection', socket => {
     if (!room || room.turn !== socket.id || !room.started) return;
     const player = room.players.find(p => p.id === socket.id);
     if (!player) return;
-    const idx = player.hand.findIndex(d => d[0] === data.domino[0] && d[1] === data.domino[1]);
+    const idx = player.hand.findIndex(d => sameDomino(d, data.domino));
     if (idx === -1) return;
     const playedRaw = player.hand[idx];
-    if (!room.board.length && !(playedRaw[0] === 6 && playedRaw[1] === 6)) return socket.emit('errorMessage', 'First move must be 6/6');
     let side = data.side || 'right';
     if (!room.board.length) side = 'start';
+    const sides = legalSides(room, playedRaw);
+    if (!sides.includes(side)) return socket.emit('errorMessage', 'This domino cannot be placed there');
     const oriented = side === 'start' ? { ok: true, domino: [...playedRaw] } : orientForSide(room, playedRaw, side);
     if (!oriented.ok) return socket.emit('errorMessage', 'This domino cannot be placed there');
     player.hand.splice(idx, 1);
@@ -168,7 +220,9 @@ io.on('connection', socket => {
     if (player.hand.length === 0) {
       endWithWinner(room, player.name, 'finished all dominoes');
     } else {
+      room.firstRequired = null;
       room.turn = nextTurn(room, player.id);
+      autoDrawForTurn(room);
     }
     io.to(data.code).emit('boardUpdated', { room: getPublicRoom(room) });
     sendHands(room);
