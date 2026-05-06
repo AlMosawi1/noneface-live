@@ -1,195 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sudoku | noneface.live</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: radial-gradient(circle at top, #303030, #0d0d0d 65%);
-      color: white;
-      min-height: 100vh;
-      padding: 22px;
-    }
-    .wrap { max-width: 860px; margin: 0 auto; text-align: center; }
-    a { color: white; }
-    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
-    .back { text-decoration: none; border: 1px solid rgba(255,255,255,.25); padding: 10px 14px; border-radius: 10px; }
-    h1 { margin: 14px 0 6px; font-size: clamp(2.2rem, 8vw, 4rem); }
-    p { color: #cfcfcf; line-height: 1.6; }
-    .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
-    button, select {
-      border: 1px solid rgba(255,255,255,.25);
-      border-radius: 10px;
-      background: rgba(255,255,255,.08);
-      color: white;
-      padding: 12px 14px;
-      font-size: 1rem;
-    }
-    button { cursor: pointer; }
-    button:hover { background: white; color: black; }
-    select option { color: black; }
-    .board {
-      width: min(92vw, 540px);
-      height: min(92vw, 540px);
-      margin: 18px auto;
-      display: grid;
-      grid-template-columns: repeat(9, 1fr);
-      grid-template-rows: repeat(9, 1fr);
-      border: 4px solid white;
-      background: #111;
-      box-shadow: 0 18px 50px rgba(0,0,0,.45);
-    }
-    .cell {
-      width: 100%;
-      height: 100%;
-      text-align: center;
-      font-size: clamp(1rem, 4vw, 1.8rem);
-      border: 1px solid rgba(255,255,255,.18);
-      background: rgba(255,255,255,.05);
-      color: white;
-      outline: none;
-    }
-    .cell:nth-child(3n) { border-right: 3px solid white; }
-    .cell:nth-child(9n) { border-right: 0; }
-    .cell:nth-child(n+19):nth-child(-n+27),
-    .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 3px solid white; }
-    .fixed { background: rgba(255,255,255,.18); font-weight: bold; color: #fff; }
-    .wrong { background: rgba(255, 71, 87, .35); }
-    .selected { background: rgba(255,255,255,.24); }
-    .status { min-height: 28px; font-weight: bold; }
-    .note { max-width: 650px; margin: 10px auto 0; font-size: .95rem; }
-  </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sudoku | noneface.live</title>
+<style>
+*{box-sizing:border-box} :root{--bg1:#303030;--bg2:#0d0d0d;--text:#fff;--muted:#cfcfcf;--panel:rgba(255,255,255,.08);--border:rgba(255,255,255,.22);--fixed:rgba(255,255,255,.18);--wrong:rgba(255,71,87,.45);--select:rgba(255,255,255,.26)}
+body.light{--bg1:#fff;--bg2:#e9eef5;--text:#111;--muted:#4b5563;--panel:rgba(0,0,0,.05);--border:rgba(0,0,0,.22);--fixed:rgba(0,0,0,.10);--wrong:rgba(255,71,87,.35);--select:rgba(37,99,235,.18)}
+body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,var(--bg1),var(--bg2) 65%);color:var(--text);min-height:100vh;padding:22px}.wrap{max-width:900px;margin:auto;text-align:center}.top{display:flex;justify-content:space-between;gap:10px;margin-bottom:18px}.back,.theme{color:var(--text);text-decoration:none;border:1px solid var(--border);background:var(--panel);padding:10px 14px;border-radius:10px;cursor:pointer}h1{font-size:clamp(2.2rem,8vw,4rem);margin:14px 0 6px}p{color:var(--muted);line-height:1.6}.controls,.pad{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:16px 0}button,select{border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--text);padding:12px 14px;font-size:1rem;cursor:pointer}button:hover,.active{background:var(--text)!important;color:var(--bg2)!important}select option{color:#111}.board{width:min(94vw,540px);height:min(94vw,540px);margin:18px auto;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);border:4px solid var(--text);background:var(--panel);box-shadow:0 18px 50px rgba(0,0,0,.35)}.cell{position:relative;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:clamp(1.2rem,4.5vw,2rem);font-weight:500;cursor:pointer;color:var(--text);background:transparent}.cell:nth-child(3n){border-right:3px solid var(--text)}.cell:nth-child(9n){border-right:0}.cell:nth-child(n+19):nth-child(-n+27),.cell:nth-child(n+46):nth-child(-n+54){border-bottom:3px solid var(--text)}.fixed{background:var(--fixed);font-weight:bold}.selected{background:var(--select)}.wrong{background:var(--wrong)!important}.notes{position:absolute;inset:4px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);font-size:clamp(.42rem,1.7vw,.72rem);font-weight:bold;color:var(--muted);align-items:center;justify-items:center}.status{min-height:28px;font-weight:bold}.small{font-size:.95rem;max-width:700px;margin:10px auto}.num{min-width:44px}.danger{border-color:rgba(255,71,87,.7)}
+</style>
 </head>
 <body>
-  <main class="wrap">
-    <div class="top">
-      <a class="back" href="../index.html">← Home</a>
-      <a class="back" href="xo.html">X/O</a>
-    </div>
-    <h1>Sudoku</h1>
-    <p>Refresh or press New Game to get a random 9x9 Sudoku puzzle. Choose Easy, Medium, or Hard.</p>
-
-    <div class="controls">
-      <select id="difficulty">
-        <option value="easy">Easy</option>
-        <option value="medium">Medium</option>
-        <option value="hard">Hard</option>
-      </select>
-      <button onclick="newGame()">New Game</button>
-      <button onclick="checkBoard()">Check</button>
-      <button onclick="solveBoard()">Show Solution</button>
-    </div>
-
-    <div id="board" class="board"></div>
-    <div id="status" class="status"></div>
-    <p class="note">Tip: Only numbers 1–9 are accepted. The bold tiles are fixed clues.</p>
-  </main>
-
-  <script>
-    const boardEl = document.getElementById('board');
-    const difficultyEl = document.getElementById('difficulty');
-    const statusEl = document.getElementById('status');
-    let solution = [];
-    let puzzle = [];
-
-    function shuffle(arr) {
-      for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-      }
-      return arr;
-    }
-
-    function pattern(r, c) { return (r * 3 + Math.floor(r / 3) + c) % 9; }
-
-    function generateFullBoard() {
-      const base = [0,1,2];
-      const rows = shuffle([...base]).flatMap(g => shuffle([...base]).map(r => g * 3 + r));
-      const cols = shuffle([...base]).flatMap(g => shuffle([...base]).map(c => g * 3 + c));
-      const nums = shuffle([1,2,3,4,5,6,7,8,9]);
-      return rows.map(r => cols.map(c => nums[pattern(r, c)]));
-    }
-
-    function makePuzzle(full, difficulty) {
-      const clues = difficulty === 'easy' ? 42 : difficulty === 'medium' ? 34 : 26;
-      const copy = full.map(row => [...row]);
-      const positions = shuffle([...Array(81).keys()]);
-      let removeCount = 81 - clues;
-      for (const pos of positions) {
-        if (removeCount <= 0) break;
-        const r = Math.floor(pos / 9), c = pos % 9;
-        copy[r][c] = 0;
-        removeCount--;
-      }
-      return copy;
-    }
-
-    function renderBoard() {
-      boardEl.innerHTML = '';
-      for (let r = 0; r < 9; r++) {
-        for (let c = 0; c < 9; c++) {
-          const input = document.createElement('input');
-          input.className = 'cell';
-          input.maxLength = 1;
-          input.inputMode = 'numeric';
-          input.dataset.row = r;
-          input.dataset.col = c;
-          if (puzzle[r][c] !== 0) {
-            input.value = puzzle[r][c];
-            input.disabled = true;
-            input.classList.add('fixed');
-          }
-          input.addEventListener('input', () => {
-            input.value = input.value.replace(/[^1-9]/g, '');
-            input.classList.remove('wrong');
-            statusEl.textContent = '';
-          });
-          input.addEventListener('focus', () => input.classList.add('selected'));
-          input.addEventListener('blur', () => input.classList.remove('selected'));
-          boardEl.appendChild(input);
-        }
-      }
-    }
-
-    function newGame() {
-      solution = generateFullBoard();
-      puzzle = makePuzzle(solution, difficultyEl.value);
-      statusEl.textContent = '';
-      renderBoard();
-    }
-
-    function checkBoard() {
-      let complete = true;
-      let correct = true;
-      document.querySelectorAll('.cell').forEach(cell => {
-        const r = Number(cell.dataset.row), c = Number(cell.dataset.col);
-        cell.classList.remove('wrong');
-        if (!cell.value) complete = false;
-        else if (Number(cell.value) !== solution[r][c]) {
-          correct = false;
-          cell.classList.add('wrong');
-        }
-      });
-      if (correct && complete) statusEl.textContent = 'Correct! You solved it.';
-      else if (correct) statusEl.textContent = 'So far so good, but the board is not complete.';
-      else statusEl.textContent = 'Some tiles are incorrect.';
-    }
-
-    function solveBoard() {
-      document.querySelectorAll('.cell').forEach(cell => {
-        const r = Number(cell.dataset.row), c = Number(cell.dataset.col);
-        cell.value = solution[r][c];
-        cell.classList.remove('wrong');
-      });
-      statusEl.textContent = 'Solution shown.';
-    }
-
-    difficultyEl.addEventListener('change', newGame);
-    newGame();
-  </script>
+<main class="wrap">
+<div class="top"><a class="back" href="../index.html">← Home</a><button class="theme" onclick="toggleTheme()">Light/Dark</button><a class="back" href="xo.html">X/O</a></div>
+<h1>Sudoku</h1><p>Use the number buttons. Turn on pencil mode to add small notes inside a tile.</p>
+<div class="controls"><select id="difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select><button onclick="newGame()">New Game</button><button id="pencilBtn" onclick="togglePencil()">✎ Pencil: Off</button><button onclick="checkBoard()">Check</button><button onclick="solveBoard()">Show Solution</button></div>
+<div id="board" class="board"></div>
+<div class="pad" id="pad"></div>
+<div id="status" class="status"></div><p class="small">When a number is completed correctly in all 9 places, that number button is disabled so you know you do not need it anymore. Wrong placed numbers turn red.</p>
+</main>
+<script>
+const boardEl=document.getElementById('board'),difficultyEl=document.getElementById('difficulty'),statusEl=document.getElementById('status'),padEl=document.getElementById('pad'),pencilBtn=document.getElementById('pencilBtn');
+let solution=[],puzzle=[],values=[],notes=[],selected=null,pencil=false;
+function applyTheme(){document.body.classList.toggle('light',localStorage.getItem('theme')==='light')}function toggleTheme(){localStorage.setItem('theme',document.body.classList.contains('light')?'dark':'light');applyTheme()}applyTheme();
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}function pattern(r,c){return(r*3+Math.floor(r/3)+c)%9}
+function generateFullBoard(){const base=[0,1,2],rows=shuffle([...base]).flatMap(g=>shuffle([...base]).map(r=>g*3+r)),cols=shuffle([...base]).flatMap(g=>shuffle([...base]).map(c=>g*3+c)),nums=shuffle([1,2,3,4,5,6,7,8,9]);return rows.map(r=>cols.map(c=>nums[pattern(r,c)]))}
+function makePuzzle(full,d){const clues=d==='easy'?42:d==='medium'?34:26,copy=full.map(r=>[...r]),pos=shuffle([...Array(81).keys()]);let remove=81-clues;for(const p of pos){if(remove<=0)break;copy[Math.floor(p/9)][p%9]=0;remove--}return copy}
+function renderPad(){padEl.innerHTML='';for(let n=1;n<=9;n++){const b=document.createElement('button');b.className='num';b.textContent=n;b.onclick=()=>placeNumber(n);if(isNumberComplete(n)){b.disabled=true;b.classList.add('active');b.textContent=n+' ✓'}padEl.appendChild(b)}const er=document.createElement('button');er.textContent='Erase';er.className='danger';er.onclick=eraseSelected;padEl.appendChild(er)}
+function isNumberComplete(n){let count=0;for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(values[r][c]===n&&solution[r][c]===n)count++;return count===9}
+function renderBoard(){boardEl.innerHTML='';for(let r=0;r<9;r++)for(let c=0;c<9;c++){const cell=document.createElement('div');cell.className='cell';cell.dataset.r=r;cell.dataset.c=c;if(puzzle[r][c]){cell.textContent=puzzle[r][c];cell.classList.add('fixed')}else if(values[r][c]){cell.textContent=values[r][c];if(values[r][c]!==solution[r][c])cell.classList.add('wrong')}else if(notes[r][c].size){const grid=document.createElement('div');grid.className='notes';for(let n=1;n<=9;n++){const s=document.createElement('span');s.textContent=notes[r][c].has(n)?n:'';grid.appendChild(s)}cell.appendChild(grid)}if(selected&&selected.r===r&&selected.c===c)cell.classList.add('selected');cell.onclick=()=>{selected={r,c};renderBoard()};boardEl.appendChild(cell)}renderPad()}
+function newGame(){solution=generateFullBoard();puzzle=makePuzzle(solution,difficultyEl.value);values=puzzle.map(r=>r.map(v=>v||0));notes=Array.from({length:9},()=>Array.from({length:9},()=>new Set()));selected=null;statusEl.textContent='';renderBoard()}
+function togglePencil(){pencil=!pencil;pencilBtn.textContent=pencil?'✎ Pencil: On':'✎ Pencil: Off';pencilBtn.classList.toggle('active',pencil)}
+function placeNumber(n){if(!selected)return statusEl.textContent='Select a tile first.';const{r,c}=selected;if(puzzle[r][c])return;if(pencil){if(values[r][c])return;notes[r][c].has(n)?notes[r][c].delete(n):notes[r][c].add(n)}else{values[r][c]=n;notes[r][c].clear();if(n!==solution[r][c])statusEl.textContent='Wrong spot.';else{statusEl.textContent='';removeSolvedNumberNotes(n);if(isSolved())statusEl.textContent='Correct! You solved it.'}}renderBoard()}
+function removeSolvedNumberNotes(n){if(isNumberComplete(n)){for(let r=0;r<9;r++)for(let c=0;c<9;c++)notes[r][c].delete(n)}}
+function eraseSelected(){if(!selected)return;const{r,c}=selected;if(puzzle[r][c])return;values[r][c]=0;notes[r][c].clear();statusEl.textContent='';renderBoard()}
+function checkBoard(){let complete=true,correct=true;for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(!values[r][c])complete=false;else if(values[r][c]!==solution[r][c])correct=false}renderBoard();statusEl.textContent=correct&&complete?'Correct! You solved it.':correct?'So far so good, but not complete.':'Some tiles are incorrect.'}
+function solveBoard(){values=solution.map(r=>[...r]);notes=Array.from({length:9},()=>Array.from({length:9},()=>new Set()));statusEl.textContent='Solution shown.';renderBoard()}
+function isSolved(){for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(values[r][c]!==solution[r][c])return false;return true}
+difficultyEl.addEventListener('change',newGame);newGame();
+</script>
 </body>
 </html>
