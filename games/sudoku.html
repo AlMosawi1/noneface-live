@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sudoku | noneface.live</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: radial-gradient(circle at top, #303030, #0d0d0d 65%);
+      color: white;
+      min-height: 100vh;
+      padding: 22px;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; text-align: center; }
+    a { color: white; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .back { text-decoration: none; border: 1px solid rgba(255,255,255,.25); padding: 10px 14px; border-radius: 10px; }
+    h1 { margin: 14px 0 6px; font-size: clamp(2.2rem, 8vw, 4rem); }
+    p { color: #cfcfcf; line-height: 1.6; }
+    .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    button, select {
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 10px;
+      background: rgba(255,255,255,.08);
+      color: white;
+      padding: 12px 14px;
+      font-size: 1rem;
+    }
+    button { cursor: pointer; }
+    button:hover { background: white; color: black; }
+    select option { color: black; }
+    .board {
+      width: min(92vw, 540px);
+      height: min(92vw, 540px);
+      margin: 18px auto;
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      grid-template-rows: repeat(9, 1fr);
+      border: 4px solid white;
+      background: #111;
+      box-shadow: 0 18px 50px rgba(0,0,0,.45);
+    }
+    .cell {
+      width: 100%;
+      height: 100%;
+      text-align: center;
+      font-size: clamp(1rem, 4vw, 1.8rem);
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.05);
+      color: white;
+      outline: none;
+    }
+    .cell:nth-child(3n) { border-right: 3px solid white; }
+    .cell:nth-child(9n) { border-right: 0; }
+    .cell:nth-child(n+19):nth-child(-n+27),
+    .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 3px solid white; }
+    .fixed { background: rgba(255,255,255,.18); font-weight: bold; color: #fff; }
+    .wrong { background: rgba(255, 71, 87, .35); }
+    .selected { background: rgba(255,255,255,.24); }
+    .status { min-height: 28px; font-weight: bold; }
+    .note { max-width: 650px; margin: 10px auto 0; font-size: .95rem; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <a class="back" href="../index.html">← Home</a>
+      <a class="back" href="xo.html">X/O</a>
+    </div>
+    <h1>Sudoku</h1>
+    <p>Refresh or press New Game to get a random 9x9 Sudoku puzzle. Choose Easy, Medium, or Hard.</p>
+
+    <div class="controls">
+      <select id="difficulty">
+        <option value="easy">Easy</option>
+        <option value="medium">Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+      <button onclick="newGame()">New Game</button>
+      <button onclick="checkBoard()">Check</button>
+      <button onclick="solveBoard()">Show Solution</button>
+    </div>
+
+    <div id="board" class="board"></div>
+    <div id="status" class="status"></div>
+    <p class="note">Tip: Only numbers 1–9 are accepted. The bold tiles are fixed clues.</p>
+  </main>
+
+  <script>
+    const boardEl = document.getElementById('board');
+    const difficultyEl = document.getElementById('difficulty');
+    const statusEl = document.getElementById('status');
+    let solution = [];
+    let puzzle = [];
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function pattern(r, c) { return (r * 3 + Math.floor(r / 3) + c) % 9; }
+
+    function generateFullBoard() {
+      const base = [0,1,2];
+      const rows = shuffle([...base]).flatMap(g => shuffle([...base]).map(r => g * 3 + r));
+      const cols = shuffle([...base]).flatMap(g => shuffle([...base]).map(c => g * 3 + c));
+      const nums = shuffle([1,2,3,4,5,6,7,8,9]);
+      return rows.map(r => cols.map(c => nums[pattern(r, c)]));
+    }
+
+    function makePuzzle(full, difficulty) {
+      const clues = difficulty === 'easy' ? 42 : difficulty === 'medium' ? 34 : 26;
+      const copy = full.map(row => [...row]);
+      const positions = shuffle([...Array(81).keys()]);
+      let removeCount = 81 - clues;
+      for (const pos of positions) {
+        if (removeCount <= 0) break;
+        const r = Math.floor(pos / 9), c = pos % 9;
+        copy[r][c] = 0;
+        removeCount--;
+      }
+      return copy;
+    }
+
+    function renderBoard() {
+      boardEl.innerHTML = '';
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          const input = document.createElement('input');
+          input.className = 'cell';
+          input.maxLength = 1;
+          input.inputMode = 'numeric';
+          input.dataset.row = r;
+          input.dataset.col = c;
+          if (puzzle[r][c] !== 0) {
+            input.value = puzzle[r][c];
+            input.disabled = true;
+            input.classList.add('fixed');
+          }
+          input.addEventListener('input', () => {
+            input.value = input.value.replace(/[^1-9]/g, '');
+            input.classList.remove('wrong');
+            statusEl.textContent = '';
+          });
+          input.addEventListener('focus', () => input.classList.add('selected'));
+          input.addEventListener('blur', () => input.classList.remove('selected'));
+          boardEl.appendChild(input);
+        }
+      }
+    }
+
+    function newGame() {
+      solution = generateFullBoard();
+      puzzle = makePuzzle(solution, difficultyEl.value);
+      statusEl.textContent = '';
+      renderBoard();
+    }
+
+    function checkBoard() {
+      let complete = true;
+      let correct = true;
+      document.querySelectorAll('.cell').forEach(cell => {
+        const r = Number(cell.dataset.row), c = Number(cell.dataset.col);
+        cell.classList.remove('wrong');
+        if (!cell.value) complete = false;
+        else if (Number(cell.value) !== solution[r][c]) {
+          correct = false;
+          cell.classList.add('wrong');
+        }
+      });
+      if (correct && complete) statusEl.textContent = 'Correct! You solved it.';
+      else if (correct) statusEl.textContent = 'So far so good, but the board is not complete.';
+      else statusEl.textContent = 'Some tiles are incorrect.';
+    }
+
+    function solveBoard() {
+      document.querySelectorAll('.cell').forEach(cell => {
+        const r = Number(cell.dataset.row), c = Number(cell.dataset.col);
+        cell.value = solution[r][c];
+        cell.classList.remove('wrong');
+      });
+      statusEl.textContent = 'Solution shown.';
+    }
+
+    difficultyEl.addEventListener('change', newGame);
+    newGame();
+  </script>
+</body>
+</html>
