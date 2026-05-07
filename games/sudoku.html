@@ -4,25 +4,60 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sudoku | noneface.live</title>
 <style>
-*{box-sizing:border-box}:root{--bg1:#303030;--bg2:#0d0d0d;--text:#fff;--muted:#cfcfcf;--panel:rgba(255,255,255,.08);--border:rgba(255,255,255,.22);--wrong:rgba(255,71,87,.45);--select:rgba(255,255,255,.26);--block:rgba(80,160,255,.20);--same:rgba(80,160,255,.38)}
-body.light{--bg1:#fff;--bg2:#e9eef5;--text:#111;--muted:#4b5563;--panel:rgba(0,0,0,.05);--border:rgba(0,0,0,.22);--wrong:rgba(255,71,87,.35);--select:rgba(37,99,235,.18);--block:rgba(37,99,235,.12);--same:rgba(37,99,235,.25)}
-body{margin:0;font-family:Arial,sans-serif;background:radial-gradient(circle at top,var(--bg1),var(--bg2) 65%);color:var(--text);min-height:100vh;padding:22px}.wrap{max-width:900px;margin:auto;text-align:center}.top{display:flex;justify-content:space-between;gap:10px;margin-bottom:18px}.back,.theme{color:var(--text);text-decoration:none;border:1px solid var(--border);background:var(--panel);padding:10px 14px;border-radius:10px;cursor:pointer}h1{font-size:clamp(2.2rem,8vw,4rem);margin:14px 0 6px}p{color:var(--muted);line-height:1.6}.controls,.pad,.tools{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:14px 0}button,select{border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--text);padding:12px 14px;font-size:1rem;cursor:pointer}button:hover,.active{background:var(--text)!important;color:var(--bg2)!important}button:disabled{display:none}select option{color:#111}.board{width:min(94vw,540px);height:min(94vw,540px);margin:18px auto;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);border:4px solid var(--text);background:var(--panel);box-shadow:0 18px 50px rgba(0,0,0,.35)}.cell{position:relative;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:clamp(1.2rem,4.5vw,2rem);font-weight:500;cursor:pointer;color:var(--text);background:transparent}.cell:nth-child(3n){border-right:3px solid var(--text)}.cell:nth-child(9n){border-right:0}.cell:nth-child(n+19):nth-child(-n+27),.cell:nth-child(n+46):nth-child(-n+54){border-bottom:3px solid var(--text)}.fixed,.locked{font-weight:bold}.selected{background:var(--select)}.blocked{background:var(--block)}.same{background:var(--same)}.wrong{background:var(--wrong)!important}.notes{position:absolute;inset:4px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);font-size:clamp(.42rem,1.7vw,.72rem);font-weight:bold;color:var(--muted);align-items:center;justify-items:center}.status{min-height:28px;font-weight:bold}.small{font-size:.95rem;max-width:720px;margin:10px auto}.num{min-width:44px}.danger{border-color:rgba(255,71,87,.7)}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f4f5f7;color:#33465f;min-height:100vh;padding:10px}
+body.dark{background:#1d2430;color:#d9e2ef}
+.wrap{max-width:760px;margin:auto;text-align:center}
+.top{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px}
+.back,.theme{color:#33465f;text-decoration:none;border:1px solid #c6cfda;background:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
+body.dark .back,body.dark .theme{color:#d9e2ef;background:#2a3444;border-color:#4b5f7a}
+.difficulty-tabs{display:flex;gap:24px;justify-content:flex-start;align-items:center;color:#7b8797;font-size:34px;font-weight:700;margin:8px 0 10px}
+.difficulty-tabs .label{font-size:35px;color:#7f8a9b;margin-right:8px}
+.diff-btn{border:0;background:transparent;color:#5f6f86;font-size:32px;font-weight:700;padding:0;cursor:pointer}
+.diff-btn.active{color:#2f5e97}
+.board{width:min(94vw,640px);height:min(94vw,640px);margin:8px auto 14px;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);border:3px solid #4e6584;background:#eef2f7}
+body.dark .board{background:#273243;border-color:#6f86a7}
+.cell{position:relative;border:1px solid #bac4d2;display:flex;align-items:center;justify-content:center;font-size:clamp(1.25rem,4.6vw,3.25rem);font-weight:500;cursor:pointer;color:#3f5573;background:#f2f4f8}
+body.dark .cell{background:#334359;border-color:#4f6482;color:#d9e2ef}
+.cell:nth-child(3n){border-right:3px solid #4e6584}
+.cell:nth-child(9n){border-right:0}
+.cell:nth-child(n+19):nth-child(-n+27),.cell:nth-child(n+46):nth-child(-n+54){border-bottom:3px solid #4e6584}
+.fixed,.locked{font-weight:500}
+.selected{background:#b8d2ee}
+.blocked{background:#ccd9e8}
+.same{background:#b8d2ee}
+.wrong{background:#f5b6be!important}
+.notes{position:absolute;inset:4px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);font-size:clamp(.38rem,1.4vw,.7rem);font-weight:bold;color:#697b94;align-items:center;justify-items:center}
+.controls,.pad,.tools{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:10px 0}
+button{border:1px solid #bcc8d9;border-radius:8px;background:#fff;color:#33465f;padding:10px 12px;font-size:1rem;cursor:pointer}
+button:hover{background:#edf2f8}
+body.dark button{background:#2a3444;color:#d9e2ef;border-color:#4b5f7a}
+body.dark button:hover{background:#354359}
+button:disabled{display:none}
+.status{min-height:24px;font-weight:bold;color:#4b5f7d}
+.small{font-size:.92rem;color:#5b6980;max-width:720px;margin:6px auto}
+.num{min-width:44px}
+.danger{border-color:#ef9aa6}
 </style>
 </head>
 <body>
 <main class="wrap">
 <div class="top"><a class="back" href="../index.html">← Home</a><button class="theme" onclick="toggleTheme()">Light/Dark</button><a class="back" href="xo.html">X/O</a></div>
-<h1>Sudoku</h1><p>Click a placed number to highlight where that number cannot go. Use the buttons below to fill tiles or make pencil notes.</p>
-<div class="controls"><select id="difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select><button onclick="newGame()">New Game</button><button onclick="checkBoard()">Check</button><button onclick="solveBoard()">Show Solution</button></div>
+<div class="difficulty-tabs"><span class="label">Difficulty:</span><button class="diff-btn active" data-diff="easy" onclick="setDifficulty('easy')">Easy</button><button class="diff-btn" data-diff="medium" onclick="setDifficulty('medium')">Medium</button><button class="diff-btn" data-diff="hard" onclick="setDifficulty('hard')">Hard</button><button class="diff-btn" data-diff="expert" onclick="setDifficulty('hard')">Expert</button><button class="diff-btn" data-diff="master" onclick="setDifficulty('hard')">Master</button><button class="diff-btn" data-diff="extreme" onclick="setDifficulty('hard')">Extreme</button></div>
+<div class="controls"><button onclick="newGame()">New Game</button><button onclick="checkBoard()">Check</button><button onclick="solveBoard()">Show Solution</button></div>
 <div id="board" class="board"></div>
 <div class="tools"><button id="pencilBtn" onclick="togglePencil()">✎ Pencil: Off</button><button class="danger" onclick="eraseSelected()">Erase</button></div>
 <div class="pad" id="pad"></div>
-<div id="status" class="status"></div><p class="small">Completed number buttons disappear. Correct completed tiles become locked. Computer clues are not specially highlighted, but you can still click them to activate highlighting.</p>
+<div id="status" class="status"></div><p class="small">Completed number buttons disappear. Correct completed tiles become locked. Click any placed number to highlight blocked spaces.</p>
 </main>
 <script>
-const boardEl=document.getElementById('board'),difficultyEl=document.getElementById('difficulty'),statusEl=document.getElementById('status'),padEl=document.getElementById('pad'),pencilBtn=document.getElementById('pencilBtn');
+const boardEl=document.getElementById('board'),statusEl=document.getElementById('status'),padEl=document.getElementById('pad'),pencilBtn=document.getElementById('pencilBtn');
 let solution=[],puzzle=[],values=[],notes=[],selected=null,pencil=false,highlightNum=null,locked=[];
-function applyTheme(){document.body.classList.toggle('light',localStorage.getItem('theme')==='light')}function toggleTheme(){localStorage.setItem('theme',document.body.classList.contains('light')?'dark':'light');applyTheme()}applyTheme();
+let currentDifficulty='easy';
+function applyTheme(){document.body.classList.toggle('dark',localStorage.getItem('theme')==='dark')}
+function toggleTheme(){const dark=document.body.classList.contains('dark');localStorage.setItem('theme',dark?'light':'dark');applyTheme()}
+applyTheme();
+function setDifficulty(level){currentDifficulty=level==='medium'?'medium':level==='hard'?'hard':'easy';document.querySelectorAll('.diff-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.diff===level));newGame()}
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}function pattern(r,c){return(r*3+Math.floor(r/3)+c)%9}
 function generateFullBoard(){const base=[0,1,2],rows=shuffle([...base]).flatMap(g=>shuffle([...base]).map(r=>g*3+r)),cols=shuffle([...base]).flatMap(g=>shuffle([...base]).map(c=>g*3+c)),nums=shuffle([1,2,3,4,5,6,7,8,9]);return rows.map(r=>cols.map(c=>nums[pattern(r,c)]))}
 function makePuzzle(full,d){const clues=d==='easy'?42:d==='medium'?34:26,copy=full.map(r=>[...r]),pos=shuffle([...Array(81).keys()]);let remove=81-clues;for(const p of pos){if(remove<=0)break;copy[Math.floor(p/9)][p%9]=0;remove--}return copy}
@@ -33,14 +68,14 @@ function renderPad(){padEl.innerHTML='';for(let n=1;n<=9;n++){if(isNumberComplet
 function updateCompletedLocks(){for(let n=1;n<=9;n++){if(isNumberComplete(n)){for(let r=0;r<9;r++)for(let c=0;c<9;c++){notes[r][c].delete(n);if(values[r][c]===n&&solution[r][c]===n)locked[r][c]=true}}}}
 function renderBoard(){updateCompletedLocks();boardEl.innerHTML='';for(let r=0;r<9;r++)for(let c=0;c<9;c++){const cell=document.createElement('div');cell.className='cell';cell.dataset.r=r;cell.dataset.c=c;if(highlightNum){if(values[r][c]===highlightNum)cell.classList.add('same');else if(!values[r][c]&&cannotPlace(highlightNum,r,c))cell.classList.add('blocked')}if(puzzle[r][c]){cell.textContent=puzzle[r][c];cell.classList.add('fixed')}else if(values[r][c]){cell.textContent=values[r][c];if(locked[r][c])cell.classList.add('locked');if(values[r][c]!==solution[r][c])cell.classList.add('wrong')}else if(notes[r][c].size){const grid=document.createElement('div');grid.className='notes';for(let n=1;n<=9;n++){const s=document.createElement('span');s.textContent=notes[r][c].has(n)?n:'';grid.appendChild(s)}cell.appendChild(grid)}if(selected&&selected.r===r&&selected.c===c)cell.classList.add('selected');cell.onclick=()=>selectCell(r,c);boardEl.appendChild(cell)}renderPad()}
 function selectCell(r,c){selected={r,c};if(values[r][c])highlightNum=values[r][c];renderBoard()}
-function newGame(){solution=generateFullBoard();puzzle=makePuzzle(solution,difficultyEl.value);values=puzzle.map(r=>r.map(v=>v||0));notes=Array.from({length:9},()=>Array.from({length:9},()=>new Set()));locked=Array.from({length:9},()=>Array(9).fill(false));selected=null;highlightNum=null;statusEl.textContent='';renderBoard()}
+function newGame(){solution=generateFullBoard();puzzle=makePuzzle(solution,currentDifficulty);values=puzzle.map(r=>r.map(v=>v||0));notes=Array.from({length:9},()=>Array.from({length:9},()=>new Set()));locked=Array.from({length:9},()=>Array(9).fill(false));selected=null;highlightNum=null;statusEl.textContent='';renderBoard()}
 function togglePencil(){pencil=!pencil;pencilBtn.textContent=pencil?'✎ Pencil: On':'✎ Pencil: Off';pencilBtn.classList.toggle('active',pencil)}
 function placeNumber(n){if(!selected)return statusEl.textContent='Select a tile first.';const{r,c}=selected;if(puzzle[r][c]||locked[r][c])return;if(pencil){if(values[r][c])return;notes[r][c].has(n)?notes[r][c].delete(n):notes[r][c].add(n)}else{values[r][c]=n;highlightNum=n;notes[r][c].clear();if(n!==solution[r][c])statusEl.textContent='Wrong spot.';else{statusEl.textContent='';if(isSolved())statusEl.textContent='Correct! You solved it.'}}renderBoard()}
 function eraseSelected(){if(!selected)return;const{r,c}=selected;if(puzzle[r][c]||locked[r][c])return;values[r][c]=0;notes[r][c].clear();highlightNum=null;statusEl.textContent='';renderBoard()}
 function checkBoard(){let complete=true,correct=true;for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(!values[r][c])complete=false;else if(values[r][c]!==solution[r][c])correct=false}renderBoard();statusEl.textContent=correct&&complete?'Correct! You solved it.':correct?'So far so good, but not complete.':'Some tiles are incorrect.'}
 function solveBoard(){values=solution.map(r=>[...r]);notes=Array.from({length:9},()=>Array.from({length:9},()=>new Set()));locked=Array.from({length:9},()=>Array(9).fill(true));statusEl.textContent='Solution shown.';renderBoard()}
 function isSolved(){for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(values[r][c]!==solution[r][c])return false;return true}
-difficultyEl.addEventListener('change',newGame);newGame();
+newGame();
 </script>
 </body>
 </html>
