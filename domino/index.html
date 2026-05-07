@@ -277,10 +277,6 @@
 
   <div class="lobby" id="lobby">
     <h1>Realtime Domino</h1>
-    <p style="color:var(--muted);font-size:0.92rem;">Server URL (for GitHub Pages use your deployed API):</p>
-    <div class="field">
-      <input id="serverUrl" type="text" placeholder="http://localhost:3000" />
-    </div>
     <div class="field">
       <label>Your name</label>
       <input id="playerName" type="text" maxlength="24" placeholder="Display name" />
@@ -352,6 +348,9 @@
   </div>
 
   <script>
+    /** Socket.IO API base URL (production). */
+    const DOMINO_SOCKET_URL = 'https://noneface-domino.onrender.com';
+
     const PIP_CELLS = {
       0: [],
       1: [4],
@@ -384,11 +383,8 @@
     }
 
     const qs = (s) => document.querySelector(s);
-    const serverUrlEl = qs('#serverUrl');
-    const savedServer = localStorage.getItem('dominoServer');
-    if (savedServer) serverUrlEl.value = savedServer;
 
-    let socket = null;
+    const socket = io(DOMINO_SOCKET_URL, { transports: ['websocket', 'polling'] });
     let pid = null;
     let code = null;
     let room = null;
@@ -397,32 +393,26 @@
     let legalSides = [];
     let legalResolved = false;
 
-    function connectSocket() {
-      const url = (serverUrlEl.value || '').trim() || 'http://localhost:3000';
-      localStorage.setItem('dominoServer', url);
-      if (socket) socket.disconnect();
-      socket = io(url, { transports: ['websocket', 'polling'] });
-      socket.on('connect', () => { setStatus('Connected.'); });
-      socket.on('connect_error', () => { setStatus('Cannot reach server. Check URL.'); });
-      socket.on('errorMessage', (m) => { setStatus(m); qs('#gameStatus').textContent = m; });
-      socket.on('session', (s) => { pid = s.pid; code = s.code; });
-      socket.on('roomJoined', onRoom);
-      socket.on('roomUpdated', onRoom);
-      socket.on('gameStarted', (p) => { onRoom(p.room); enterGame(); });
-      socket.on('yourHand', (h) => { hand = h; renderHand(); });
-      socket.on('boardUpdated', (p) => { onRoom(p.room); });
-      socket.on('legalSides', (p) => {
-        if (!selected || !p.domino || !sameDom(selected, p.domino)) return;
-        legalSides = p.sides || [];
-        legalResolved = true;
-        renderHand();
-      });
-      socket.on('gameWon', (d) => showModal('Game over', `${d.winnerName} — ${d.reason || ''}`));
-      socket.on('roundMessage', (d) => { qs('#roundMsg').textContent = d.text || ''; });
-      socket.on('kicked', () => showModal('Removed', 'You were kicked from the room.'));
-      socket.on('banned', () => showModal('Banned', 'You are banned from this room.'));
-      socket.on('autoDrew', () => { /* silent */ });
-    }
+    socket.on('connect', () => { setStatus('Connected.'); });
+    socket.on('connect_error', () => { setStatus('Cannot reach game server. Try again later.'); });
+    socket.on('errorMessage', (m) => { setStatus(m); qs('#gameStatus').textContent = m; });
+    socket.on('session', (s) => { pid = s.pid; code = s.code; });
+    socket.on('roomJoined', onRoom);
+    socket.on('roomUpdated', onRoom);
+    socket.on('gameStarted', (p) => { onRoom(p.room); enterGame(); });
+    socket.on('yourHand', (h) => { hand = h; renderHand(); });
+    socket.on('boardUpdated', (p) => { onRoom(p.room); });
+    socket.on('legalSides', (p) => {
+      if (!selected || !p.domino || !sameDom(selected, p.domino)) return;
+      legalSides = p.sides || [];
+      legalResolved = true;
+      renderHand();
+    });
+    socket.on('gameWon', (d) => showModal('Game over', `${d.winnerName} — ${d.reason || ''}`));
+    socket.on('roundMessage', (d) => { qs('#roundMsg').textContent = d.text || ''; });
+    socket.on('kicked', () => showModal('Removed', 'You were kicked from the room.'));
+    socket.on('banned', () => showModal('Banned', 'You are banned from this room.'));
+    socket.on('autoDrew', () => { /* silent */ });
 
     function setStatus(t) { qs('#lobbyStatus').textContent = t || ''; }
 
@@ -647,7 +637,6 @@
     };
 
     qs('#btnHost').onclick = () => {
-      connectSocket();
       const name = (qs('#playerName').value || 'Host').trim();
       socket.emit('hostGame', {
         name,
@@ -657,7 +646,6 @@
       });
     };
     qs('#btnJoin').onclick = () => {
-      connectSocket();
       const name = (qs('#playerName').value || 'Player').trim();
       const c = (qs('#joinCode').value || '').trim().toUpperCase();
       if (c.length !== 6) return setStatus('Enter a 6-character code.');
