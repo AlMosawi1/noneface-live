@@ -33,6 +33,12 @@ The host can:
 
 If a player is banned, they cannot rejoin the same room.
 
+## Five doubles redraw
+
+- If any player is dealt **five or more doubles** at the start of a round, a **redraw vote** runs before play begins. That player does not vote.
+- In **2v2**, if **two** of the other three players vote to redraw, all tiles are collected and redealt (the vote may run again if the new deal also qualifies).
+- In **1v1**, only the **opponent** votes; their agreement alone is enough to force a redraw.
+
 ## Round Start Rule
 
 ### First Round
@@ -73,11 +79,10 @@ Team A has the higher total, so Team A loses. Team B receives 17 points.
 
 ## Scoring
 
-- The host sets the starting entry score.
-- Example: starting entry = 21.
-- Points count toward the game total only after the starting entry condition is met.
-- The host sets the winning score.
-- Example: game ends at 100 points.
+- The host sets the **starting entry** pip threshold (for example 21).
+- On a **blocked round**, the losing team’s remaining pip total is added to that team’s **loss score** only if that total is **greater than or equal to** the starting entry; otherwise nothing is added for that round.
+- The host sets the **loss cap** (for example 100). Each team’s loss score is shown as `current / cap`.
+- When a team’s loss score reaches the cap, **that team loses the match**.
 
 ## Technical Notes
 

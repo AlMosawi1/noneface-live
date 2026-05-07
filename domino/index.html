@@ -1,1 +1,675 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Domino Multiplayer</title><script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script><style>body{margin:0;font-family:Arial,sans-serif;background:#0c3b25;color:white;padding:20px}body.light{background:#edf7ef;color:#111}.wrap{max-width:1150px;margin:auto}.top{display:flex;justify-content:space-between;margin-bottom:20px}button,input,select,a{padding:10px 12px;border-radius:10px;border:1px solid #ffffff55;background:#123;color:white;margin:4px;text-decoration:none}body.light button,body.light input,body.light select,body.light a{background:white;color:#111}.card{border:1px solid #ffffff44;border-radius:16px;padding:16px;margin:12px 0;background:rgba(0,0,0,.18)}body.light .card{background:rgba(255,255,255,.75)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.hidden{display:none}.roomCode{text-align:center;font-size:32px;letter-spacing:5px}.players{display:grid;gap:8px}.player{display:flex;justify-content:space-between;border:1px solid #ffffff44;border-radius:10px;padding:8px}.off{opacity:.55}.boardWrap{overflow-x:auto;border-radius:14px;background:#075f38;padding:12px}.dropRow{display:flex;gap:10px;align-items:center;min-width:max-content}.dropZone{border:2px dashed #fff8;border-radius:14px;min-width:90px;min-height:120px;display:flex;align-items:center;justify-content:center;color:#fff9}.dropZone.over{background:#ffffff22}.board{display:flex;gap:10px;min-height:150px;align-items:center}.hand{display:flex;gap:10px;flex-wrap:wrap}.domino{border:2px solid #111;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:bold;cursor:pointer;background:#f8f8f8;color:#111;box-shadow:0 4px 10px #0006;transition:.18s}.domino:hover{transform:translateY(-3px)}.domino.blocked{opacity:.34;filter:grayscale(1);transform:none}.domino.playable{box-shadow:0 0 0 3px #ffd166,0 6px 14px #0007}.v{width:54px;height:100px;flex-direction:column}.h{width:100px;height:54px;flex-direction:row}.small.v{width:42px;height:78px}.small.h{width:78px;height:42px}.lineV{width:80%;height:2px;background:#111}.lineH{width:2px;height:80%;background:#111}.status{text-align:center;font-weight:bold;margin-top:10px}.danger{border-color:#ff4757}.choices{text-align:center}</style></head><body><main class="wrap"><div class="top"><a href="../index.html">Home</a><button onclick="toggleTheme()">Light/Dark</button></div><h1>Domino Multiplayer</h1><section id="menu" class="grid"><div class="card"><h2>Host a Game</h2><input id="hostName" placeholder="Display name"><select id="mode"><option value="1v1">1v1</option><option value="2v2">2v2</option></select><input id="entryScore" type="number" value="21"><input id="targetScore" type="number" value="100"><button onclick="hostGame()">Host Game</button></div><div class="card"><h2>Join / Reconnect</h2><input id="joinName" placeholder="Display name"><input id="joinCode" maxlength="6" placeholder="Room code"><button onclick="joinGame()">Join Game</button><button onclick="rejoinGame()">Reconnect</button></div></section><section id="room" class="hidden"><div class="card"><div id="roomCode" class="roomCode">------</div><p id="info"></p><button id="startBtn" onclick="startGame()">Start Game</button><button class="danger" onclick="quitGame()">Quit Game</button></div><div class="grid"><div class="card"><h2>Players</h2><div id="players" class="players"></div></div><div class="card"><h2>Board</h2><div class="boardWrap"><div class="dropRow"><div id="leftDrop" class="dropZone">Left</div><div id="board" class="board"></div><div id="rightDrop" class="dropZone">Right</div></div></div></div></div><div class="card"><h2>Your Hand</h2><p id="hint">Playable pieces are highlighted. Drag a playable piece to Left or Right, or click it.</p><div id="hand" class="hand"></div><div id="choices" class="choices hidden"><button onclick="placeChosen('left')">Place Left</button><button onclick="placeChosen('right')">Place Right</button></div></div></section><div id="status" class="status"></div></main><script>const BACKEND="https://noneface-domino.onrender.com";let savedPid=localStorage.getItem('dominoPid')||crypto.randomUUID();localStorage.setItem('dominoPid',savedPid);let savedCode=localStorage.getItem('dominoCode')||'';let socket=io(BACKEND,{transports:['websocket','polling']});let myId=null,currentRoom=null,roomState=null,myHand=[],pending=null,legalMap={};function toggleTheme(){document.body.classList.toggle('light');localStorage.setItem('theme',document.body.classList.contains('light')?'light':'dark')}if(localStorage.getItem('theme')==='light')document.body.classList.add('light');function msg(t){status.textContent=t}socket.on('connect',()=>{myId=socket.id;msg('Connected');if(savedCode)socket.emit('rejoinGame',{pid:savedPid,code:savedCode})});socket.on('session',d=>{savedPid=d.pid;currentRoom=d.code;localStorage.setItem('dominoPid',d.pid);localStorage.setItem('dominoCode',d.code)});socket.on('roomJoined',showRoom);socket.on('roomUpdated',showRoom);socket.on('gameStarted',d=>showRoom(d.room));socket.on('yourHand',h=>{myHand=h;calculateLegal();renderHand()});socket.on('boardUpdated',d=>showRoom(d.room));socket.on('autoDrew',d=>msg('Auto drew '+d.count+' domino(es)'));socket.on('legalSides',d=>{if(!d.sides.length)return msg('Illegal move');if(d.sides.length===1)play(d.domino,d.sides[0]);else{pending=d.domino;choices.classList.remove('hidden')}});socket.on('gameWon',d=>{alert('Winner: '+d.winnerName+'\nReason: '+d.reason);msg('Winner: '+d.winnerName)});socket.on('errorMessage',msg);socket.on('kicked',()=>{alert('You were kicked');localStorage.removeItem('dominoCode');location.reload()});socket.on('banned',()=>{alert('You were banned');localStorage.removeItem('dominoCode');location.reload()});function hostGame(){socket.emit('hostGame',{pid:savedPid,name:hostName.value||'Host',mode:mode.value,entryScore:+entryScore.value||21,targetScore:+targetScore.value||100})}function joinGame(){socket.emit('joinGame',{pid:savedPid,name:joinName.value||'Player',code:joinCode.value.trim().toUpperCase()})}function rejoinGame(){socket.emit('rejoinGame',{pid:savedPid,code:(joinCode.value||savedCode).trim().toUpperCase()})}function showRoom(r){roomState=r;currentRoom=r.code;localStorage.setItem('dominoCode',r.code);menu.classList.add('hidden');room.classList.remove('hidden');roomCode.textContent=r.code;let tp=r.players.find(p=>p.id===r.turn);info.textContent='Mode: '+r.mode+' | Players: '+r.players.length+'/'+r.neededPlayers+' | Boneyard: '+r.boneyardCount+' | Turn: '+(tp?tp.name:'-');renderPlayers(r);renderBoard(r.board||[]);calculateLegal();renderHand();let amHost=r.players.some(p=>p.id===myId&&p.host);startBtn.disabled=!amHost||r.started||r.players.length!==r.neededPlayers}function renderPlayers(r){players.innerHTML='';let amHost=r.players.some(p=>p.id===myId&&p.host);r.players.forEach(p=>{let d=document.createElement('div');d.className='player '+(p.connected?'':'off');d.innerHTML='<span>'+p.name+(p.host?' 👑':'')+' | Team '+p.team+' | '+p.handCount+(p.connected?'':' | Reconnecting...')+'</span>';if(amHost&&!p.host&&!r.started){let k=document.createElement('button');k.textContent='Kick';k.onclick=()=>socket.emit('kickPlayer',{code:r.code,playerId:p.id});let b=document.createElement('button');b.textContent='Ban';b.className='danger';b.onclick=()=>socket.emit('banPlayer',{code:r.code,playerId:p.id});d.append(k,b)}players.appendChild(d)})}function same(a,b){return(a[0]===b[0]&&a[1]===b[1])||(a[0]===b[1]&&a[1]===b[0])}function edges(){if(!roomState||!roomState.board.length)return{left:null,right:null};return{left:roomState.board[0].domino[0],right:roomState.board[roomState.board.length-1].domino[1]}}function sidesFor(d){if(!roomState||roomState.turn!==myId)return[];if(!roomState.board.length){return(!roomState.firstRequired||same(d,roomState.firstRequired))?['start']:[]}let e=edges(),s=[];if(d[0]===e.left||d[1]===e.left)s.push('left');if(d[0]===e.right||d[1]===e.right)s.push('right');return s}function calculateLegal(){legalMap={};myHand.forEach(d=>legalMap[d.join('-')]=sidesFor(d))}function dominoElement(d,small,forceVertical=false){let dbl=d[0]===d[1],vertical=forceVertical||dbl,el=document.createElement('div');el.className='domino '+(vertical?'v':'h')+(small?' small':'');el.innerHTML=vertical?'<span>'+d[0]+'</span><span class="lineV"></span><span>'+d[1]+'</span>':'<span>'+d[0]+'</span><span class="lineH"></span><span>'+d[1]+'</span>';return el}function renderBoard(b){board.innerHTML='';if(!b.length){board.textContent='Waiting for first move';return}b.forEach(x=>board.appendChild(dominoElement(x.domino,true,false)))}function renderHand(){hand.innerHTML='';myHand.forEach(d=>{let el=dominoElement(d,false,true),s=legalMap[d.join('-')]||[];el.draggable=s.length>0;el.classList.add(s.length?'playable':'blocked');el.onclick=()=>attempt(d);el.ondragstart=e=>e.dataTransfer.setData('text/plain',JSON.stringify(d));hand.appendChild(el)})}function attempt(d){if(!roomState||roomState.turn!==myId)return msg('Not your turn');let s=sidesFor(d);if(!s.length)return msg('This piece cannot be played');if(s.length===1)play(d,s[0]);else{pending=d;choices.classList.remove('hidden')}}function play(d,side){socket.emit('playDomino',{code:currentRoom,domino:d,side})}function placeChosen(side){choices.classList.add('hidden');play(pending,side)}function setupDrop(el,side){el.ondragover=e=>{e.preventDefault();el.classList.add('over')};el.ondragleave=()=>el.classList.remove('over');el.ondrop=e=>{e.preventDefault();el.classList.remove('over');let d=JSON.parse(e.dataTransfer.getData('text/plain'));if(!sidesFor(d).includes(side)&&!sidesFor(d).includes('start'))return msg('Cannot place there');play(d,sidesFor(d).includes('start')?'start':side)}}setupDrop(leftDrop,'left');setupDrop(rightDrop,'right');function startGame(){socket.emit('startGame',currentRoom)}function quitGame(){socket.emit('quitGame',currentRoom);localStorage.removeItem('dominoCode');location.reload()}</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Domino | noneface.live</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg-deep: #071428;
+      --bg-mid: #0e2748;
+      --panel: #143a6e;
+      --panel-light: #1f4d8c;
+      --accent: #3aa0ff;
+      --accent-soft: rgba(58, 160, 255, 0.25);
+      --text: #f2f7ff;
+      --muted: #8aa4c8;
+      --good: #3ecf8e;
+      --warn: #ffd447;
+      --tile: #fdfdfd;
+      --tile-edge: #c8d4e6;
+      --danger: #ff6b7a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(120% 80% at 50% 0%, var(--bg-mid), var(--bg-deep));
+      color: var(--text);
+      overflow-x: hidden;
+    }
+    a { color: var(--accent); }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      gap: 10px;
+    }
+    .topbar a, .topbar button {
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: var(--panel);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .scoreboard {
+      display: flex;
+      gap: 10px;
+      flex: 1;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .score-pill {
+      min-width: 120px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, var(--panel-light), var(--panel));
+      border: 1px solid rgba(255,255,255,0.1);
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    .score-pill .label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .score-pill .nums { font-size: 1.45rem; font-weight: 800; margin-top: 2px; }
+    .score-pill .nums span { color: var(--warn); }
+    .lobby {
+      max-width: 420px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+    .lobby h1 { font-size: 1.6rem; margin: 0 0 12px; }
+    .field { margin: 10px 0; }
+    .field label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+    }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn {
+      width: 100%;
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 12px;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+      background: linear-gradient(180deg, var(--accent), #1e6fd0);
+      color: #041018;
+    }
+    .btn.secondary { background: var(--panel-light); color: var(--text); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .room-code { font-size: 1.4rem; letter-spacing: 0.2em; text-align: center; margin: 12px 0; }
+    .players { font-size: 0.9rem; color: var(--muted); }
+    #gameRoot { display: none; flex-direction: column; height: 100vh; padding-bottom: 8px; }
+    #gameRoot.active { display: flex; }
+    .opponents {
+      padding: 8px 12px;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .opp {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 0.88rem;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+    .board-row {
+      flex: 1;
+      display: flex;
+      gap: 8px;
+      padding: 0 10px;
+      min-height: 0;
+      align-items: stretch;
+    }
+    .frame-wrap {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .frame-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; padding-left: 4px; }
+    .frame {
+      flex: 1;
+      min-height: 220px;
+      max-height: min(52vh, 560px);
+      background: linear-gradient(180deg, #0f203d, #0a1830);
+      border-radius: 16px;
+      border: 2px solid rgba(255,255,255,0.12);
+      box-shadow: inset 0 0 40px rgba(0,0,0,0.45);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .chain-scale {
+      transform-origin: center center;
+      transition: transform 0.25s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .chain {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0;
+    }
+    .bone-col {
+      width: 56px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 4px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      overflow: hidden;
+    }
+    .bone-col .cap { font-size: 0.65rem; color: var(--muted); text-align: center; }
+    .bone-stack {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: center;
+      gap: 2px;
+      overflow: hidden;
+      justify-content: flex-start;
+    }
+    .bone-tile {
+      width: 40px;
+      height: 22px;
+      border-radius: 4px;
+      background: linear-gradient(180deg, #5b7aaf, #3a5588);
+      border: 1px solid rgba(255,255,255,0.25);
+      flex-shrink: 0;
+    }
+    .domino {
+      display: flex;
+      background: var(--tile);
+      border-radius: 8px;
+      border: 2px solid #1b2f4d;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .domino .half {
+      width: 34px;
+      height: 68px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      padding: 4px;
+      gap: 2px;
+    }
+    .domino .half:first-child { border-right: 2px solid #1b2f4d; }
+    .pip { width: 7px; height: 7px; border-radius: 50%; background: #111; align-self: center; justify-self: center; }
+    .hand-wrap {
+      padding: 10px 12px 14px;
+      background: linear-gradient(0deg, rgba(0,0,0,0.35), transparent);
+    }
+    .hand-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    .hand {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-end;
+    }
+    .hand .domino { cursor: pointer; transform: rotate(90deg); }
+    .hand .domino.selected { outline: 3px solid var(--accent); }
+    .hand .domino.unplayable { opacity: 0.38; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      padding: 6px 10px;
+    }
+    .toolbar button {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .toolbar button.primary { background: var(--accent-soft); border-color: var(--accent); }
+    .status { text-align: center; min-height: 22px; font-size: 0.9rem; color: var(--muted); padding: 4px; }
+    .vote-panel {
+      margin: 8px 12px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255, 212, 71, 0.12);
+      border: 1px solid rgba(255, 212, 71, 0.35);
+    }
+    .vote-panel h3 { margin: 0 0 8px; font-size: 1rem; }
+    .vote-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+      display: none; align-items: center; justify-content: center; z-index: 50;
+    }
+    .modal-bg.show { display: flex; }
+    .modal { background: var(--panel); padding: 20px; border-radius: 16px; max-width: 360px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="topbar" id="topbar" style="display:none">
+    <a href="../index.html">← Home</a>
+    <div class="scoreboard" id="scoreboard"></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="roomBadge" style="font-size:0.75rem;color:var(--muted);letter-spacing:0.12em"></span>
+      <button type="button" id="btnPass" style="display:none">Pass</button>
+    </div>
+  </div>
+
+  <div class="lobby" id="lobby">
+    <h1>Realtime Domino</h1>
+    <p style="color:var(--muted);font-size:0.92rem;">Server URL (for GitHub Pages use your deployed API):</p>
+    <div class="field">
+      <input id="serverUrl" type="text" placeholder="http://localhost:3000" />
+    </div>
+    <div class="field">
+      <label>Your name</label>
+      <input id="playerName" type="text" maxlength="24" placeholder="Display name" />
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Mode</label>
+        <select id="hostMode">
+          <option value="1v1">1v1</option>
+          <option value="2v2">2v2</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Loss cap (first team here loses)</label>
+        <input id="targetScore" type="number" min="1" value="100" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Starting entry (blocked round: loser pips must be ≥ this to count)</label>
+      <input id="entryScore" type="number" min="0" value="21" />
+    </div>
+    <button class="btn" id="btnHost">Host game</button>
+    <hr style="border-color:rgba(255,255,255,0.1);margin:18px 0" />
+    <div class="field">
+      <label>Room code</label>
+      <input id="joinCode" type="text" maxlength="6" placeholder="ABC123" style="text-transform:uppercase" />
+    </div>
+    <button class="btn secondary" id="btnJoin">Join game</button>
+    <div class="status" id="lobbyStatus"></div>
+  </div>
+
+  <div id="gameRoot">
+    <div class="opponents" id="opponents"></div>
+    <div class="board-row">
+      <div class="frame-wrap">
+        <div class="frame-label">Table</div>
+        <div class="frame" id="frame">
+          <div class="chain-scale" id="chainScale">
+            <div class="chain" id="chain"></div>
+          </div>
+        </div>
+      </div>
+      <aside class="bone-col" aria-label="Boneyard">
+        <div class="cap">Boneyard</div>
+        <div class="bone-stack" id="boneStack"></div>
+        <div class="cap" id="boneCount">0</div>
+      </aside>
+    </div>
+    <div class="status" id="roundMsg"></div>
+    <div class="vote-panel" id="votePanel" style="display:none">
+      <h3 id="voteTitle">Redraw vote</h3>
+      <p id="voteText" style="margin:0 0 10px;color:var(--muted);font-size:0.9rem;"></p>
+      <div class="vote-actions" id="voteActions"></div>
+    </div>
+    <div class="toolbar" id="toolbar"></div>
+    <div class="hand-wrap">
+      <div class="hand-title">Your hand — tap a tile, then choose side</div>
+      <div class="hand" id="hand"></div>
+    </div>
+    <div class="status" id="gameStatus"></div>
+  </div>
+
+  <div class="modal-bg" id="modal">
+    <div class="modal">
+      <h2 id="modalTitle">Game over</h2>
+      <p id="modalBody"></p>
+      <button class="btn" id="modalClose" style="margin-top:12px">OK</button>
+    </div>
+  </div>
+
+  <script>
+    const PIP_CELLS = {
+      0: [],
+      1: [4],
+      2: [0, 8],
+      3: [0, 4, 8],
+      4: [0, 2, 6, 8],
+      5: [0, 2, 4, 6, 8],
+      6: [0, 2, 3, 5, 6, 8],
+    };
+    function halfEl(n) {
+      const g = document.createElement('div');
+      g.className = 'half';
+      for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('div');
+        if ((PIP_CELLS[n] || []).includes(i)) {
+          const p = document.createElement('div');
+          p.className = 'pip';
+          cell.appendChild(p);
+        }
+        g.appendChild(cell);
+      }
+      return g;
+    }
+    function dominoEl(a, b) {
+      const d = document.createElement('div');
+      d.className = 'domino';
+      d.appendChild(halfEl(a));
+      d.appendChild(halfEl(b));
+      return d;
+    }
+
+    const qs = (s) => document.querySelector(s);
+    const serverUrlEl = qs('#serverUrl');
+    const savedServer = localStorage.getItem('dominoServer');
+    if (savedServer) serverUrlEl.value = savedServer;
+
+    let socket = null;
+    let pid = null;
+    let code = null;
+    let room = null;
+    let hand = [];
+    let selected = null;
+    let legalSides = [];
+    let legalResolved = false;
+
+    function connectSocket() {
+      const url = (serverUrlEl.value || '').trim() || 'http://localhost:3000';
+      localStorage.setItem('dominoServer', url);
+      if (socket) socket.disconnect();
+      socket = io(url, { transports: ['websocket', 'polling'] });
+      socket.on('connect', () => { setStatus('Connected.'); });
+      socket.on('connect_error', () => { setStatus('Cannot reach server. Check URL.'); });
+      socket.on('errorMessage', (m) => { setStatus(m); qs('#gameStatus').textContent = m; });
+      socket.on('session', (s) => { pid = s.pid; code = s.code; });
+      socket.on('roomJoined', onRoom);
+      socket.on('roomUpdated', onRoom);
+      socket.on('gameStarted', (p) => { onRoom(p.room); enterGame(); });
+      socket.on('yourHand', (h) => { hand = h; renderHand(); });
+      socket.on('boardUpdated', (p) => { onRoom(p.room); });
+      socket.on('legalSides', (p) => {
+        if (!selected || !p.domino || !sameDom(selected, p.domino)) return;
+        legalSides = p.sides || [];
+        legalResolved = true;
+        renderHand();
+      });
+      socket.on('gameWon', (d) => showModal('Game over', `${d.winnerName} — ${d.reason || ''}`));
+      socket.on('roundMessage', (d) => { qs('#roundMsg').textContent = d.text || ''; });
+      socket.on('kicked', () => showModal('Removed', 'You were kicked from the room.'));
+      socket.on('banned', () => showModal('Banned', 'You are banned from this room.'));
+      socket.on('autoDrew', () => { /* silent */ });
+    }
+
+    function setStatus(t) { qs('#lobbyStatus').textContent = t || ''; }
+
+    function onRoom(r) {
+      room = r;
+      if (!r) return;
+      if (r.code) code = r.code;
+      if (r.started) enterGame();
+      qs('#roomBadge').textContent = r.code || '';
+      renderLobbyRoom();
+      renderScoreboard();
+      renderBoard();
+      renderBoneyard();
+      renderOpponents();
+      renderToolbar();
+      renderVote();
+      renderHand();
+      if (r.started && r.gamePhase === 'play' && r.turn === socket.id) {
+        qs('#btnPass').style.display = 'inline-block';
+      } else {
+        qs('#btnPass').style.display = 'none';
+      }
+    }
+
+    function enterGame() {
+      qs('#roomPanel')?.remove();
+      qs('#lobby').style.display = 'none';
+      qs('#gameRoot').classList.add('active');
+      qs('#topbar').style.display = 'flex';
+    }
+
+    function renderLobbyRoom() {
+      if (!room || room.started) return;
+      const hostControls = room.players?.find((p) => p.pid === pid && p.host);
+      let html = `<div class="room-code">${room.code}</div><div class="players">`;
+      room.players.forEach((p) => {
+        html += `<div>${p.name} ${p.host ? '(host)' : ''} · team ${p.team} ${p.connected === false ? '· offline' : ''}</div>`;
+      });
+      html += `</div>`;
+      if (hostControls) {
+        html += `<div class="field"><label>Loss cap</label><input type="number" id="hostTarget" value="${room.targetScore}" min="1"/></div>`;
+        html += `<div class="field"><label>Entry score</label><input type="number" id="hostEntry" value="${room.entryScore}" min="0"/></div>`;
+        html += `<div class="field"><label>Mode</label><select id="hostModeRoom"><option value="1v1">1v1</option><option value="2v2">2v2</option></select></div>`;
+        html += `<button class="btn" id="btnSaveHost">Save settings</button>`;
+        html += `<button class="btn" id="btnStart" ${room.players.length < (room.mode === '2v2' ? 4 : 2) ? 'disabled' : ''}>Start game</button>`;
+      }
+      const wrap = document.createElement('div');
+      wrap.innerHTML = html;
+      const existing = qs('#roomPanel');
+      if (existing) existing.remove();
+      wrap.id = 'roomPanel';
+      qs('#lobby').appendChild(wrap);
+      if (hostControls) {
+        qs('#hostModeRoom').value = room.mode;
+        qs('#btnSaveHost').onclick = () => {
+          socket.emit('updateRoomSettings', {
+            code: room.code,
+            targetScore: +qs('#hostTarget').value,
+            entryScore: +qs('#hostEntry').value,
+            mode: qs('#hostModeRoom').value,
+          });
+        };
+        qs('#btnStart').onclick = () => socket.emit('startGame', room.code);
+      }
+    }
+
+    function renderScoreboard() {
+      if (!room || !room.started) {
+        qs('#scoreboard').innerHTML = '';
+        return;
+      }
+      const t = room.targetScore || 100;
+      const e1 = room.teamLoss?.[1] ?? 0;
+      const e2 = room.teamLoss?.[2] ?? 0;
+      qs('#scoreboard').innerHTML = `
+        <div class="score-pill"><div class="label">Team 1 · loss pts</div><div class="nums">${e1}<span>/${t}</span></div></div>
+        <div class="score-pill"><div class="label">Team 2 · loss pts</div><div class="nums">${e2}<span>/${t}</span></div></div>
+      `;
+    }
+
+    function renderOpponents() {
+      if (!room) return;
+      const me = room.players.find((p) => p.pid === pid);
+      const others = room.players.filter((p) => p.pid !== pid);
+      qs('#opponents').innerHTML = others.map((p) => `
+        <div class="opp"><span class="dot"></span><strong>${escapeHtml(p.name)}</strong> · T${p.team} · ${p.handCount} tiles</div>
+      `).join('');
+      if (me && room.turn) {
+        const cur = room.players.find((p) => p.id === room.turn);
+        qs('#gameStatus').textContent = cur && cur.pid === pid ? 'Your turn.' : `${cur ? escapeHtml(cur.name) : '…'}'s turn.`;
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function renderBoard() {
+      const chain = qs('#chain');
+      const frame = qs('#frame');
+      const scaleEl = qs('#chainScale');
+      chain.innerHTML = '';
+      if (!room || !room.board || !room.board.length) {
+        scaleEl.style.transform = 'scale(1)';
+        return;
+      }
+      room.board.forEach((pl) => {
+        const [a, b] = pl.domino;
+        chain.appendChild(dominoEl(a, b));
+      });
+      requestAnimationFrame(() => {
+        const fw = frame.clientWidth - 24;
+        const fh = frame.clientHeight - 24;
+        const cw = chain.scrollWidth || 1;
+        const ch = chain.scrollHeight || 1;
+        const s = Math.min(1, fw / cw, fh / ch, 1);
+        scaleEl.style.transform = `scale(${s})`;
+      });
+    }
+
+    function renderBoneyard() {
+      const n = room?.boneyardCount ?? 0;
+      qs('#boneCount').textContent = String(n);
+      const stack = qs('#boneStack');
+      stack.innerHTML = '';
+      const maxShow = 14;
+      const show = Math.min(n, maxShow);
+      for (let i = 0; i < show; i++) {
+        stack.appendChild(document.createElement('div')).className = 'bone-tile';
+      }
+    }
+
+    function renderToolbar() {
+      qs('#toolbar').innerHTML = '';
+    }
+
+    function renderVote() {
+      const panel = qs('#votePanel');
+      if (!room || room.gamePhase !== 'redraw_vote' || !room.redrawVote) {
+        panel.style.display = 'none';
+        return;
+      }
+      panel.style.display = 'block';
+      const rv = room.redrawVote;
+      qs('#voteTitle').textContent = 'Five doubles — redraw?';
+      qs('#voteText').textContent = `${escapeHtml(rv.subjectName || 'A player')} has five doubles. ${rv.neededAgrees} agreeing vote(s) reshuffle all tiles. They cannot vote.`;
+      const actions = qs('#voteActions');
+      actions.innerHTML = '';
+      if (!rv.voterPids.includes(pid)) {
+        if (rv.subjectPid === pid) {
+          actions.textContent = 'Waiting for other players to vote.';
+        }
+        return;
+      }
+      const voted = rv.votes && rv.votes[pid] !== undefined;
+      if (voted) {
+        actions.textContent = 'You voted. Waiting for others…';
+        return;
+      }
+      const yes = document.createElement('button');
+      yes.className = 'btn';
+      yes.textContent = 'Redraw';
+      yes.onclick = () => socket.emit('redrawVote', { code: room.code, agree: true });
+      const no = document.createElement('button');
+      no.className = 'btn secondary';
+      no.textContent = 'Keep deal';
+      no.onclick = () => socket.emit('redrawVote', { code: room.code, agree: false });
+      actions.appendChild(yes);
+      actions.appendChild(no);
+    }
+
+    function renderHand() {
+      const el = qs('#hand');
+      el.innerHTML = '';
+      if (!room || !room.started) return;
+      const myTurn = room.turn === socket.id && room.gamePhase === 'play';
+      hand.forEach((d) => {
+        const node = dominoEl(d[0], d[1]);
+        if (selected && sameDom(selected, d)) node.classList.add('selected');
+        if (myTurn && selected && sameDom(selected, d) && legalResolved && legalSides.length === 0) node.classList.add('unplayable');
+        node.onclick = () => {
+          if (room.turn !== socket.id || room.gamePhase !== 'play') return;
+          selected = d;
+          legalSides = [];
+          legalResolved = false;
+          socket.emit('getLegalSides', { code: room.code, domino: d });
+          renderHand();
+        };
+        el.appendChild(node);
+      });
+      if (selected && room.turn === socket.id && legalSides.length) {
+        const bar = document.createElement('div');
+        bar.style.cssText = 'width:100%;display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;';
+        legalSides.forEach((side) => {
+          const b = document.createElement('button');
+          b.className = 'btn';
+          b.textContent = side === 'start' ? 'Play as starter' : side === 'left' ? 'Play left' : 'Play right';
+          b.onclick = () => {
+            socket.emit('playDomino', { code: room.code, domino: selected, side });
+            selected = null;
+            legalSides = [];
+            legalResolved = false;
+          };
+          bar.appendChild(b);
+        });
+        el.appendChild(bar);
+      }
+    }
+
+    function sameDom(a, b) {
+      return a && b && ((a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]));
+    }
+
+    function showModal(title, body) {
+      qs('#modalTitle').textContent = title;
+      qs('#modalBody').textContent = body;
+      qs('#modal').classList.add('show');
+    }
+    qs('#modalClose').onclick = () => {
+      qs('#modal').classList.remove('show');
+      location.reload();
+    };
+
+    qs('#btnHost').onclick = () => {
+      connectSocket();
+      const name = (qs('#playerName').value || 'Host').trim();
+      socket.emit('hostGame', {
+        name,
+        mode: qs('#hostMode').value,
+        targetScore: +qs('#targetScore').value,
+        entryScore: +qs('#entryScore').value,
+      });
+    };
+    qs('#btnJoin').onclick = () => {
+      connectSocket();
+      const name = (qs('#playerName').value || 'Player').trim();
+      const c = (qs('#joinCode').value || '').trim().toUpperCase();
+      if (c.length !== 6) return setStatus('Enter a 6-character code.');
+      socket.once('session', () => {});
+      socket.emit('joinGame', { code: c, name });
+    };
+
+    qs('#btnPass').onclick = () => {
+      if (room && socket) socket.emit('passTurn', { code: room.code });
+    };
+
+    window.addEventListener('resize', () => renderBoard());
+  </script>
+</body>
+</html>
