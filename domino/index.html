@@ -20,6 +20,9 @@
       --tile: #fdfdfd;
       --tile-edge: #c8d4e6;
       --danger: #ff6b7a;
+      /* Each half is square → full tile is 2:1 (length : width) */
+      --domino-half: min(10.5vw, 34px);
+      --pip-size: clamp(4px, 1.1vw, 5px);
     }
     * { box-sizing: border-box; }
     body {
@@ -148,6 +151,36 @@
       align-items: center;
       justify-content: center;
     }
+    .frame-table {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      gap: 8px;
+      padding: 10px;
+      min-height: 0;
+    }
+    .drop-slot {
+      flex: 0 0 44px;
+      align-self: stretch;
+      max-height: 100%;
+      min-height: 72px;
+      border: 2px dashed rgba(58, 160, 255, 0.5);
+      border-radius: 14px;
+      background: rgba(58, 160, 255, 0.14);
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease;
+    }
+    .drop-slot.active {
+      opacity: 1;
+      pointer-events: auto;
+      box-shadow: 0 0 0 2px var(--accent), 0 0 22px rgba(58, 160, 255, 0.35);
+    }
+    .drop-slot:active { transform: scale(0.97); }
     .chain-scale {
       transform-origin: center center;
       transition: transform 0.25s ease;
@@ -155,12 +188,18 @@
       align-items: center;
       justify-content: center;
       padding: 12px;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
     }
     .chain {
       display: flex;
       flex-wrap: nowrap;
       align-items: center;
       gap: 0;
+      flex: 1;
+      min-width: 0;
+      justify-content: center;
     }
     .bone-col {
       width: 56px;
@@ -188,8 +227,8 @@
       justify-content: flex-start;
     }
     .bone-tile {
-      width: 40px;
-      height: 22px;
+      width: 36px;
+      height: 18px;
       border-radius: 4px;
       background: linear-gradient(180deg, #5b7aaf, #3a5588);
       border: 1px solid rgba(255,255,255,0.25);
@@ -205,16 +244,17 @@
       flex-shrink: 0;
     }
     .domino .half {
-      width: 34px;
-      height: 68px;
+      width: var(--domino-half);
+      height: var(--domino-half);
+      aspect-ratio: 1 / 1;
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       grid-template-rows: repeat(3, 1fr);
-      padding: 4px;
-      gap: 2px;
+      padding: 3px;
+      gap: 1px;
     }
     .domino .half:first-child { border-right: 2px solid #1b2f4d; }
-    .pip { width: 7px; height: 7px; border-radius: 50%; background: #111; align-self: center; justify-self: center; }
+    .pip { width: var(--pip-size); height: var(--pip-size); border-radius: 50%; background: #111; align-self: center; justify-self: center; }
     .hand-wrap {
       padding: 10px 12px 14px;
       background: linear-gradient(0deg, rgba(0,0,0,0.35), transparent);
@@ -227,9 +267,20 @@
       justify-content: center;
       align-items: flex-end;
     }
-    .hand .domino { cursor: pointer; transform: rotate(90deg); }
+    .hand .domino { cursor: pointer; transform: rotate(90deg); transform-origin: center center; }
     .hand .domino.selected { outline: 3px solid var(--accent); }
     .hand .domino.unplayable { opacity: 0.38; }
+    /* Board: long axis along chain vs across (90°). Doubles are opposite of touched non-double. */
+    .chain .domino.board-tile {
+      transform-origin: center center;
+      transition: transform 0.22s ease;
+    }
+    .chain .domino.board-tile.orient-along {
+      transform: rotate(0deg);
+    }
+    .chain .domino.board-tile.orient-cross {
+      transform: rotate(90deg);
+    }
     .toolbar {
       display: flex;
       flex-wrap: wrap;
@@ -263,6 +314,8 @@
     }
     .modal-bg.show { display: flex; }
     .modal { background: var(--panel); padding: 20px; border-radius: 16px; max-width: 360px; text-align: center; }
+    .tile-fly-hide { opacity: 0 !important; transition: opacity 0.15s ease; }
+    #flyLayer { position: fixed; inset: 0; pointer-events: none; z-index: 10000; }
   </style>
 </head>
 <body>
@@ -295,7 +348,7 @@
       </div>
     </div>
     <div class="field">
-      <label>Starting entry (blocked round: loser pips must be ≥ this to count)</label>
+      <label>Starting entry (opponent pips after go-out or blocked round must be ≥ this to add loss points)</label>
       <input id="entryScore" type="number" min="0" value="21" />
     </div>
     <button class="btn" id="btnHost">Host game</button>
@@ -314,8 +367,12 @@
       <div class="frame-wrap">
         <div class="frame-label">Table</div>
         <div class="frame" id="frame">
-          <div class="chain-scale" id="chainScale">
-            <div class="chain" id="chain"></div>
+          <div class="frame-table" id="frameTable">
+            <button type="button" class="drop-slot drop-left" id="dropLeft" aria-label="Play on left" hidden></button>
+            <div class="chain-scale" id="chainScale">
+              <div class="chain" id="chain"></div>
+            </div>
+            <button type="button" class="drop-slot drop-right" id="dropRight" aria-label="Play on right" hidden></button>
           </div>
         </div>
       </div>
@@ -333,7 +390,7 @@
     </div>
     <div class="toolbar" id="toolbar"></div>
     <div class="hand-wrap">
-      <div class="hand-title">Your hand — tap a tile, then choose side</div>
+      <div class="hand-title">Your hand — tap a tile to play</div>
       <div class="hand" id="hand"></div>
     </div>
     <div class="status" id="gameStatus"></div>
@@ -346,6 +403,8 @@
       <button class="btn" id="modalClose" style="margin-top:12px">OK</button>
     </div>
   </div>
+
+  <div id="flyLayer" aria-hidden="true"></div>
 
   <script>
     /** Socket.IO API base URL (production). */
@@ -382,6 +441,53 @@
       return d;
     }
 
+    function isDoubleDomino(d) {
+      return d && d[0] === d[1];
+    }
+
+    /** Non-doubles alternate along / across the chain by index. */
+    function nonDoubleBoardOrientation(idx) {
+      return idx % 2 === 0 ? 'along' : 'cross';
+    }
+
+    /** Index of nearest non-double when walking from `from` toward higher indices. */
+    function nextNonDoubleIndex(board, from) {
+      for (let j = from; j < board.length; j++) {
+        if (!isDoubleDomino(board[j].domino)) return j;
+      }
+      return -1;
+    }
+
+    /** Index of nearest non-double when walking from `from` toward lower indices. */
+    function prevNonDoubleIndex(board, from) {
+      for (let j = from; j >= 0; j--) {
+        if (!isDoubleDomino(board[j].domino)) return j;
+      }
+      return -1;
+    }
+
+    /**
+     * Reference non-double this double connects to (for orientation).
+     * Uses `side` from the server: left play touches chain to the right; right play touches to the left.
+     */
+    function refNonDoubleIndexForDouble(board, idx, placed) {
+      const side = placed.side || 'right';
+      if (side === 'start') return -1;
+      if (side === 'left') return nextNonDoubleIndex(board, idx + 1);
+      if (side === 'right') return prevNonDoubleIndex(board, idx - 1);
+      return -1;
+    }
+
+    /** 'along' = long axis parallel to chain; 'cross' = perpendicular. Double is opposite of connected non-double. */
+    function boardTileOrientation(board, idx, placed) {
+      const d = placed.domino;
+      if (!isDoubleDomino(d)) return nonDoubleBoardOrientation(idx);
+      const ref = refNonDoubleIndexForDouble(board, idx, placed);
+      if (ref < 0) return 'along';
+      const neighborO = nonDoubleBoardOrientation(ref);
+      return neighborO === 'along' ? 'cross' : 'along';
+    }
+
     const qs = (s) => document.querySelector(s);
 
     const socket = io(DOMINO_SOCKET_URL, { transports: ['websocket', 'polling'] });
@@ -392,21 +498,142 @@
     let selected = null;
     let legalSides = [];
     let legalResolved = false;
+    let lastHandTileEl = null;
+    /** @type {{ fromRect: DOMRect, side: string, prevLen: number, a: number, b: number } | null} */
+    let pendingFly = null;
+
+    const dropLeft = () => qs('#dropLeft');
+    const dropRight = () => qs('#dropRight');
+
+    function hideDropZones() {
+      const L = dropLeft();
+      const R = dropRight();
+      L.hidden = true;
+      R.hidden = true;
+      L.classList.remove('active');
+      R.classList.remove('active');
+    }
+
+    function updateDropZones() {
+      const L = dropLeft();
+      const R = dropRight();
+      hideDropZones();
+      if (!room || room.turn !== socket.id || room.gamePhase !== 'play' || !selected || !legalResolved) return;
+      const sides = legalSides;
+      if (sides.includes('left')) {
+        L.hidden = false;
+        L.classList.add('active');
+      }
+      if (sides.includes('right')) {
+        R.hidden = false;
+        R.classList.add('active');
+      }
+    }
+
+    function clearPlaySelection() {
+      selected = null;
+      legalSides = [];
+      legalResolved = false;
+      lastHandTileEl = null;
+      hideDropZones();
+    }
+
+    function playFromHand(side, fromEl) {
+      if (!room || !selected) return;
+      const raw = fromEl || lastHandTileEl;
+      const fr = raw && raw.getBoundingClientRect ? raw.getBoundingClientRect() : null;
+      const prevLen = room.board ? room.board.length : 0;
+      const [a, b] = selected;
+      if (fr && fr.width > 0) pendingFly = { fromRect: fr, side, prevLen, a, b };
+      else pendingFly = null;
+      socket.emit('playDomino', { code: room.code, domino: selected, side });
+      clearPlaySelection();
+      renderHand();
+    }
+
+    function runTileFlyAnimation(fromRect, targetEl, a, b, boardOrient, done) {
+      const layer = qs('#flyLayer');
+      const ghost = dominoEl(a, b);
+      if (boardOrient === 'along' || boardOrient === 'cross') {
+        ghost.classList.add('board-tile', boardOrient === 'along' ? 'orient-along' : 'orient-cross');
+      }
+      ghost.style.position = 'fixed';
+      ghost.style.left = `${fromRect.left}px`;
+      ghost.style.top = `${fromRect.top}px`;
+      ghost.style.width = `${fromRect.width}px`;
+      ghost.style.height = `${fromRect.height}px`;
+      ghost.style.zIndex = '10001';
+      ghost.style.margin = '0';
+      ghost.style.pointerEvents = 'none';
+      ghost.style.boxSizing = 'border-box';
+      layer.appendChild(ghost);
+      const tr = targetEl.getBoundingClientRect();
+      const anim = ghost.animate(
+        [
+          {
+            left: `${fromRect.left}px`,
+            top: `${fromRect.top}px`,
+            width: `${fromRect.width}px`,
+            height: `${fromRect.height}px`,
+          },
+          {
+            left: `${tr.left}px`,
+            top: `${tr.top}px`,
+            width: `${tr.width}px`,
+            height: `${tr.height}px`,
+          },
+        ],
+        { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
+      );
+      anim.onfinish = () => {
+        ghost.remove();
+        if (typeof done === 'function') done();
+      };
+    }
 
     socket.on('connect', () => { setStatus('Connected.'); });
     socket.on('connect_error', () => { setStatus('Cannot reach game server. Try again later.'); });
     socket.on('errorMessage', (m) => { setStatus(m); qs('#gameStatus').textContent = m; });
     socket.on('session', (s) => { pid = s.pid; code = s.code; });
-    socket.on('roomJoined', onRoom);
-    socket.on('roomUpdated', onRoom);
-    socket.on('gameStarted', (p) => { onRoom(p.room); enterGame(); });
+    socket.on('roomJoined', (r) => {
+      const prevLen = room && room.board ? room.board.length : 0;
+      onRoom(r);
+      maybeFlyPlacedTile(prevLen);
+    });
+    socket.on('roomUpdated', (r) => {
+      const prevLen = room && room.board ? room.board.length : 0;
+      onRoom(r);
+      maybeFlyPlacedTile(prevLen);
+    });
+    socket.on('gameStarted', (p) => {
+      const prevLen = room && room.board ? room.board.length : 0;
+      onRoom(p.room);
+      maybeFlyPlacedTile(prevLen);
+      enterGame();
+    });
     socket.on('yourHand', (h) => { hand = h; renderHand(); });
-    socket.on('boardUpdated', (p) => { onRoom(p.room); });
+    socket.on('boardUpdated', (p) => {
+      const prevLen = room && room.board ? room.board.length : 0;
+      onRoom(p.room);
+      maybeFlyPlacedTile(prevLen);
+    });
     socket.on('legalSides', (p) => {
       if (!selected || !p.domino || !sameDom(selected, p.domino)) return;
       legalSides = p.sides || [];
       legalResolved = true;
+      if (legalSides.length === 1) {
+        playFromHand(legalSides[0], lastHandTileEl);
+        return;
+      }
+      const canL = legalSides.includes('left');
+      const canR = legalSides.includes('right');
+      if (canL && canR) {
+        renderHand();
+        updateDropZones();
+        return;
+      }
       renderHand();
+      updateDropZones();
     });
     socket.on('gameWon', (d) => showModal('Game over', `${d.winnerName} — ${d.reason || ''}`));
     socket.on('roundMessage', (d) => { qs('#roundMsg').textContent = d.text || ''; });
@@ -420,6 +647,7 @@
       room = r;
       if (!r) return;
       if (r.code) code = r.code;
+      if (r.started && r.gamePhase === 'play' && r.turn !== socket.id) clearPlaySelection();
       if (r.started) enterGame();
       qs('#roomBadge').textContent = r.code || '';
       renderLobbyRoom();
@@ -430,6 +658,7 @@
       renderToolbar();
       renderVote();
       renderHand();
+      updateDropZones();
       if (r.started && r.gamePhase === 'play' && r.turn === socket.id) {
         qs('#btnPass').style.display = 'inline-block';
       } else {
@@ -510,6 +739,40 @@
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    function maybeFlyPlacedTile(prevBoardLen) {
+      if (!pendingFly || !room || !room.board || room.board.length <= prevBoardLen) {
+        pendingFly = null;
+        return;
+      }
+      const ch = qs('#chain');
+      if (!ch || !ch.children.length) {
+        pendingFly = null;
+        return;
+      }
+      const { fromRect, side, a, b } = pendingFly;
+      let targetEl = null;
+      if (side === 'left') targetEl = ch.firstElementChild;
+      else targetEl = ch.lastElementChild;
+      if (!targetEl || !fromRect || fromRect.width < 4) {
+        pendingFly = null;
+        return;
+      }
+      pendingFly = null;
+      targetEl.classList.add('tile-fly-hide');
+      const idx = side === 'left' ? 0 : room.board.length - 1;
+      const pl = room.board[idx];
+      let flyOrient = 'along';
+      if (pl) {
+        const ok = (pl.domino[0] === a && pl.domino[1] === b) || (pl.domino[0] === b && pl.domino[1] === a);
+        if (ok) flyOrient = boardTileOrientation(room.board, idx, pl);
+      }
+      requestAnimationFrame(() => {
+        runTileFlyAnimation(fromRect, targetEl, a, b, flyOrient, () => {
+          targetEl.classList.remove('tile-fly-hide');
+        });
+      });
+    }
+
     function renderBoard() {
       const chain = qs('#chain');
       const frame = qs('#frame');
@@ -517,11 +780,16 @@
       chain.innerHTML = '';
       if (!room || !room.board || !room.board.length) {
         scaleEl.style.transform = 'scale(1)';
+        requestAnimationFrame(() => updateDropZones());
         return;
       }
-      room.board.forEach((pl) => {
+      room.board.forEach((pl, idx) => {
         const [a, b] = pl.domino;
-        chain.appendChild(dominoEl(a, b));
+        const tile = dominoEl(a, b);
+        tile.classList.add('board-tile');
+        const o = boardTileOrientation(room.board, idx, pl);
+        tile.classList.add(o === 'along' ? 'orient-along' : 'orient-cross');
+        chain.appendChild(tile);
       });
       requestAnimationFrame(() => {
         const fw = frame.clientWidth - 24;
@@ -530,6 +798,7 @@
         const ch = chain.scrollHeight || 1;
         const s = Math.min(1, fw / cw, fh / ch, 1);
         scaleEl.style.transform = `scale(${s})`;
+        updateDropZones();
       });
     }
 
@@ -596,6 +865,7 @@
         node.onclick = () => {
           if (room.turn !== socket.id || room.gamePhase !== 'play') return;
           selected = d;
+          lastHandTileEl = node;
           legalSides = [];
           legalResolved = false;
           socket.emit('getLegalSides', { code: room.code, domino: d });
@@ -603,24 +873,16 @@
         };
         el.appendChild(node);
       });
-      if (selected && room.turn === socket.id && legalSides.length) {
-        const bar = document.createElement('div');
-        bar.style.cssText = 'width:100%;display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;';
-        legalSides.forEach((side) => {
-          const b = document.createElement('button');
-          b.className = 'btn';
-          b.textContent = side === 'start' ? 'Play as starter' : side === 'left' ? 'Play left' : 'Play right';
-          b.onclick = () => {
-            socket.emit('playDomino', { code: room.code, domino: selected, side });
-            selected = null;
-            legalSides = [];
-            legalResolved = false;
-          };
-          bar.appendChild(b);
-        });
-        el.appendChild(bar);
-      }
     }
+
+    dropLeft().addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (room && room.turn === socket.id && selected && legalSides.includes('left')) playFromHand('left', lastHandTileEl);
+    });
+    dropRight().addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (room && room.turn === socket.id && selected && legalSides.includes('right')) playFromHand('right', lastHandTileEl);
+    });
 
     function sameDom(a, b) {
       return a && b && ((a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]));

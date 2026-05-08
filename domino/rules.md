@@ -55,8 +55,8 @@ If no player can make a legal move:
 
 - The player who placed the last domino starts the next round.
 - Each team sums the values of all remaining dominoes in their hands.
-- The team with the higher remaining total loses the round.
-- The winning team receives points equal to the losing team's remaining total.
+- The team with the higher remaining total loses the round (for loss scoring).
+- That losing team’s pip total may be added to their **loss score** (see Scoring).
 
 Example:
 
@@ -77,10 +77,22 @@ Total = 16
 
 Team A has the higher total, so Team A loses. Team B receives 17 points.
 
+Team A has the higher total, so Team A loses the blocked round for scoring purposes.
+
+## Go-out (empty hand)
+
+When a player places their last domino and **empties their hand**, the round ends immediately.
+
+- The **opposing team** has all remaining tiles; sum the pips on those tiles.
+- That pip total is added to the opposing team’s **loss score** only if it is **greater than or equal to** the host’s **starting entry** threshold (same rule as a blocked round).
+- The player who went out **starts the next round**.
+- If that loss update pushes the opposing team to the **loss cap**, that team loses the match.
+
 ## Scoring
 
 - The host sets the **starting entry** pip threshold (for example 21).
 - On a **blocked round**, the losing team’s remaining pip total is added to that team’s **loss score** only if that total is **greater than or equal to** the starting entry; otherwise nothing is added for that round.
+- The same entry rule applies when someone **goes out** (see above).
 - The host sets the **loss cap** (for example 100). Each team’s loss score is shown as `current / cap`.
 - When a team’s loss score reaches the cap, **that team loses the match**.
 

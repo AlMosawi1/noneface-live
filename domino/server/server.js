@@ -403,8 +403,42 @@ function winMatch(r, winnerTeam, reason) {
   broadcast(r);
 }
 
+function opposingTeam(team) {
+  return team === 1 ? 2 : 1;
+}
+
+/** Round ends by go-out: opposing team’s remaining pip total may add to their loss score (entry threshold). */
 function finishRoundByEmptyHand(r, winner) {
-  io.to(r.code).emit('roundMessage', { text: `${winner.name} emptied their hand. New round — they start.` });
+  const loserTeam = opposingTeam(winner.team);
+  const loserPips = teamPipSum(r, loserTeam);
+  let applied = 0;
+  if (loserPips >= r.entryScore) {
+    r.teamLoss[loserTeam] += loserPips;
+    applied = loserPips;
+  }
+  io.to(r.code).emit('roundMessage', {
+    text:
+      applied > 0
+        ? `${winner.name} went out. Team ${loserTeam} loses ${loserPips} pips (+${applied} toward their ${r.targetScore} cap; entry ${r.entryScore}). New deal — ${winner.name} starts.`
+        : `${winner.name} went out. Team ${loserTeam} has ${loserPips} pips left (below entry ${r.entryScore}). No loss points counted. New deal — ${winner.name} starts.`,
+  });
+  if (r.teamLoss[loserTeam] >= r.targetScore) {
+    const winTeam = loserTeam === 1 ? 2 : 1;
+    const names = r.players
+      .filter((p) => p.team === winTeam)
+      .map((p) => p.name)
+      .join(' & ');
+    io.to(r.code).emit('gameWon', {
+      winnerName: names || `Team ${winTeam}`,
+      reason: `Team ${loserTeam} reached ${r.targetScore} loss points.`,
+    });
+    r.started = false;
+    r.turn = null;
+    r.gamePhase = 'lobby';
+    broadcast(r);
+    hands(r);
+    return;
+  }
   beginRound(r, winner.pid);
 }
 
@@ -603,9 +637,8 @@ io.on('connection', (socket) => {
     r.firstRequired = null;
     r.consecutivePasses = 0;
     if (!p.hand.length) {
-      io.to(d.code).emit('boardUpdated', { room: pub(r) });
-      hands(r);
       finishRoundByEmptyHand(r, p);
+      hands(r);
       return;
     }
     r.turn = next(r, p.id);
