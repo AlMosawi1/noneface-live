@@ -18,11 +18,15 @@
       --good: #3ecf8e;
       --warn: #ffd447;
       --tile: #fdfdfd;
+      --tile-board: #ffffff;
+      --tile-hand-muted: #5a677a;
       --tile-edge: #c8d4e6;
+      --divider: rgba(0, 0, 0, 0.12);
       --danger: #ff6b7a;
       /* Each half is square → full tile is 2:1 (length : width) */
       --domino-half: min(10.5vw, 34px);
-      --pip-size: clamp(4px, 1.1vw, 5px);
+      --domino-radius: min(18px, 5.2vw);
+      --pip-size: clamp(4px, 1.25vw, 6px);
     }
     * { box-sizing: border-box; }
     body {
@@ -141,10 +145,10 @@
       flex: 1;
       min-height: 220px;
       max-height: min(52vh, 560px);
-      background: linear-gradient(180deg, #0f203d, #0a1830);
-      border-radius: 16px;
-      border: 2px solid rgba(255,255,255,0.12);
-      box-shadow: inset 0 0 40px rgba(0,0,0,0.45);
+      background: linear-gradient(180deg, #4a8fd4, #2e6bb5);
+      border-radius: 20px;
+      border: 2px solid rgba(255,255,255,0.2);
+      box-shadow: inset 0 0 32px rgba(0,0,0,0.12);
       overflow: hidden;
       position: relative;
       display: flex;
@@ -193,13 +197,10 @@
       min-height: 0;
     }
     .chain {
-      display: flex;
-      flex-wrap: nowrap;
-      align-items: center;
-      gap: 0;
+      position: relative;
       flex: 1;
-      min-width: 0;
-      justify-content: center;
+      min-width: 120px;
+      min-height: 120px;
     }
     .bone-col {
       width: 56px;
@@ -236,13 +237,18 @@
     }
     .domino {
       display: flex;
-      background: var(--tile);
-      border-radius: 8px;
-      border: 2px solid #1b2f4d;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+      background: var(--tile-board);
+      border-radius: var(--domino-radius);
+      border: none;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22), 0 1px 0 rgba(255, 255, 255, 0.85) inset;
       overflow: hidden;
       flex-shrink: 0;
     }
+    .domino.hand-muted {
+      background: var(--tile-hand-muted);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+    .domino.hand-muted .pip { background: #0a0a0a; }
     .domino .half {
       width: var(--domino-half);
       height: var(--domino-half);
@@ -250,11 +256,11 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       grid-template-rows: repeat(3, 1fr);
-      padding: 3px;
-      gap: 1px;
+      padding: 4px;
+      gap: 2px;
     }
-    .domino .half:first-child { border-right: 2px solid #1b2f4d; }
-    .pip { width: var(--pip-size); height: var(--pip-size); border-radius: 50%; background: #111; align-self: center; justify-self: center; }
+    .domino .half:first-child { border-right: 1px solid var(--divider); }
+    .pip { width: var(--pip-size); height: var(--pip-size); border-radius: 50%; background: #0a0a0a; align-self: center; justify-self: center; }
     .hand-wrap {
       padding: 10px 12px 14px;
       background: linear-gradient(0deg, rgba(0,0,0,0.35), transparent);
@@ -268,12 +274,15 @@
       align-items: flex-end;
     }
     .hand .domino { cursor: pointer; transform: rotate(90deg); transform-origin: center center; }
-    .hand .domino.selected { outline: 3px solid var(--accent); }
-    .hand .domino.unplayable { opacity: 0.38; }
-    /* Board: long axis along chain vs across (90°). Doubles are opposite of touched non-double. */
+    .hand .domino.selected { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: var(--domino-radius); }
+    .hand .domino.unplayable { opacity: 0.72; filter: saturate(0.85); }
+    /* Board snake: positioned by JS (see renderBoard); rotation encodes parallel vs perpendicular to arm */
     .chain .domino.board-tile {
+      position: absolute;
       transform-origin: center center;
-      transition: transform 0.22s ease;
+      transition: transform 0.22s ease, left 0.2s ease, top 0.2s ease;
+      margin: 0;
+      z-index: 1;
     }
     .chain .domino.board-tile.orient-along {
       transform: rotate(0deg);
@@ -445,47 +454,151 @@
       return d && d[0] === d[1];
     }
 
-    /** Non-doubles alternate along / across the chain by index. */
-    function nonDoubleBoardOrientation(idx) {
-      return idx % 2 === 0 ? 'along' : 'cross';
+    const rotFwdCW = (f) => [f[1], -f[0]];
+    const rotFwdCCW = (f) => [-f[1], f[0]];
+
+    /**
+     * Incoming unit vector — direction from tile i-1 toward tile i along the snake (toward rising index).
+     * First tile uses the same axis as outgoing for symmetry.
+     * Returns CSS class: along = DOM wide; cross = rotate 90°.
+     */
+    function orientAlongCrossFromIncoming(incoming, isDouble) {
+      const horiz = incoming[0] !== 0;
+      if (!isDouble) return horiz ? 'along' : 'cross';
+      return horiz ? 'cross' : 'along';
     }
 
-    /** Index of nearest non-double when walking from `from` toward higher indices. */
-    function nextNonDoubleIndex(board, from) {
-      for (let j = from; j < board.length; j++) {
-        if (!isDoubleDomino(board[j].domino)) return j;
+    /** AABB corners in units (half width = 1 long = 2) for occupancy tests. */
+    function tileCornersUnit(cx, cy, forward, isDouble) {
+      const [fx, fy] = forward;
+      const px = -fy;
+      const py = fx;
+      const corners = [];
+      if (!isDouble) {
+        for (const sf of [-1, 1]) {
+          for (const sp of [-0.5, 0.5]) {
+            corners.push([cx + sf * fx + sp * px, cy + sf * fy + sp * py]);
+          }
+        }
+      } else {
+        for (const sp of [-1, 1]) {
+          for (const sf of [-0.5, 0.5]) {
+            corners.push([cx + sp * px + sf * fx, cy + sp * py + sf * fy]);
+          }
+        }
       }
-      return -1;
+      return corners;
     }
 
-    /** Index of nearest non-double when walking from `from` toward lower indices. */
-    function prevNonDoubleIndex(board, from) {
-      for (let j = from; j >= 0; j--) {
-        if (!isDoubleDomino(board[j].domino)) return j;
+    function bboxUnit(layout) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const t of layout) {
+        for (const [x, y] of tileCornersUnit(t.cx, t.cy, t.forward, t.isDouble)) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
       }
-      return -1;
+      return { minX, minY, maxX, maxY };
+    }
+
+    function bboxFits(b, maxW, maxH, pad) {
+      const w = b.maxX - b.minX;
+      const h = b.maxY - b.minY;
+      return w <= maxW - pad * 2 && h <= maxH - pad * 2;
     }
 
     /**
-     * Reference non-double this double connects to (for orientation).
-     * Uses `side` from the server: left play touches chain to the right; right play touches to the left.
+     * 2D snake: non-doubles align with inbound arm; doubles perpendicular.
+     * Tries cardinal seeds and 90° turns when the bbox would overflow the table.
+     * Half-module units (short half width = 1, center step = 2).
      */
-    function refNonDoubleIndexForDouble(board, idx, placed) {
-      const side = placed.side || 'right';
-      if (side === 'start') return -1;
-      if (side === 'left') return nextNonDoubleIndex(board, idx + 1);
-      if (side === 'right') return prevNonDoubleIndex(board, idx - 1);
-      return -1;
-    }
+    function computeSnakeLayout(board, maxUnitsW, maxUnitsH, padUnits) {
+      if (!board || !board.length) return [];
+      const pad = padUnits ?? 1.75;
+      const limW = Math.max(maxUnitsW || 999, pad * 2 + 4);
+      const limH = Math.max(maxUnitsH || 999, pad * 2 + 4);
 
-    /** 'along' = long axis parallel to chain; 'cross' = perpendicular. Double is opposite of connected non-double. */
-    function boardTileOrientation(board, idx, placed) {
-      const d = placed.domino;
-      if (!isDoubleDomino(d)) return nonDoubleBoardOrientation(idx);
-      const ref = refNonDoubleIndexForDouble(board, idx, placed);
-      if (ref < 0) return 'along';
-      const neighborO = nonDoubleBoardOrientation(ref);
-      return neighborO === 'along' ? 'cross' : 'along';
+      /** `toNext[i]` = unit vector from tile i center to tile i+1 center. */
+      function build(seedToNext) {
+        const rows = [];
+        let toNext = [...seedToNext];
+        let cx = 0;
+        let cy = 0;
+        for (let i = 0; i < board.length; i++) {
+          const isD = isDoubleDomino(board[i].domino);
+          const axisForOrient = i === 0 ? toNext : rows[i - 1].toNext;
+          rows.push({ cx, cy, toNext: [...toNext], isDouble: isD, orient: orientAlongCrossFromIncoming(axisForOrient, isD) });
+          if (i === board.length - 1) break;
+
+          const trySeg = (seg) => {
+            const nx = cx + seg[0] * 2;
+            const ny = cy + seg[1] * 2;
+            const cand = rows.slice(0, -1);
+            const lastUpdated = { ...rows[rows.length - 1], toNext: [...seg] };
+            cand.push(lastUpdated);
+            const isDn = isDoubleDomino(board[i + 1].domino);
+            cand.push({
+              cx: nx,
+              cy: ny,
+              toNext: [...seg],
+              isDouble: isDn,
+              orient: orientAlongCrossFromIncoming(seg, isDn),
+            });
+            const bb2 = bboxUnit(
+              cand.map((t, j) => ({
+                cx: t.cx,
+                cy: t.cy,
+                forward: j === 0 ? t.toNext : cand[j - 1].toNext,
+                isDouble: t.isDouble,
+              })),
+            );
+            return { nx, ny, seg, ok: bboxFits(bb2, limW, limH, pad) };
+          };
+
+          let best = trySeg(toNext);
+          if (!best.ok) {
+            const t1 = trySeg(rotFwdCW(toNext));
+            const t2 = trySeg(rotFwdCCW(toNext));
+            if (t1.ok) best = t1;
+            else if (t2.ok) best = t2;
+            else best = t1;
+          }
+          rows[rows.length - 1].toNext = [...best.seg];
+          cx = best.nx;
+          cy = best.ny;
+          toNext = best.seg;
+        }
+        const list = rows.map(({ cx: x, cy: y, orient: o }) => ({ cx: x, cy: y, orient: o }));
+        list._bbox = bboxUnit(
+          rows.map((t, j) => ({
+            cx: t.cx,
+            cy: t.cy,
+            forward: j === 0 ? t.toNext : rows[j - 1].toNext,
+            isDouble: t.isDouble,
+          })),
+        );
+        return list;
+      }
+
+      const candidates = [build([1, 0]), build([-1, 0]), build([0, 1]), build([0, -1])];
+      let bestLayout = candidates[0].map((tile) => ({ cx: tile.cx, cy: tile.cy, orient: tile.orient }));
+      let bestScore = Infinity;
+      for (const L of candidates) {
+        const b = L._bbox;
+        const area = (b.maxX - b.minX) * (b.maxY - b.minY);
+        const fits = bboxFits(b, limW, limH, pad);
+        const score = fits ? area : area + 1e6;
+        if (score < bestScore) {
+          bestScore = score;
+          bestLayout = L.map((tile) => ({ cx: tile.cx, cy: tile.cy, orient: tile.orient }));
+        }
+      }
+      return bestLayout;
     }
 
     const qs = (s) => document.querySelector(s);
@@ -501,6 +614,30 @@
     let lastHandTileEl = null;
     /** @type {{ fromRect: DOMRect, side: string, prevLen: number, a: number, b: number } | null} */
     let pendingFly = null;
+    /** Placements `{ cx, cy, orient }` matching last rendered board — used after `renderBoard`. */
+    let lastSnakeLayout = [];
+
+    /** Measure one domino-half in px inside `host` without leaving visible debris. */
+    function snakeTileBoundsUx(cx, cy, isDouble, orient) {
+      if (!isDouble && orient === 'along')
+        return { mnX: cx - 1, mxX: cx + 1, mnY: cy - 0.5, mxY: cy + 0.5 };
+      if (!isDouble && orient === 'cross')
+        return { mnX: cx - 0.5, mxX: cx + 0.5, mnY: cy - 1, mxY: cy + 1 };
+      if (isDouble && orient === 'cross')
+        return { mnX: cx - 0.5, mxX: cx + 0.5, mnY: cy - 1, mxY: cy + 1 };
+      return { mnX: cx - 1, mxX: cx + 1, mnY: cy - 0.5, mxY: cy + 0.5 };
+    }
+
+    function measureHalfPx(host) {
+      const probe = dominoEl(6, 6);
+      probe.setAttribute('aria-hidden', 'true');
+      probe.style.cssText =
+        'position:absolute;visibility:hidden;left:-9999px;top:0;pointer-events:none;margin:0;';
+      host.appendChild(probe);
+      const w = probe.querySelector('.half')?.getBoundingClientRect().width || 34;
+      probe.remove();
+      return w;
+    }
 
     const dropLeft = () => qs('#dropLeft');
     const dropRight = () => qs('#dropRight');
@@ -761,10 +898,11 @@
       targetEl.classList.add('tile-fly-hide');
       const idx = side === 'left' ? 0 : room.board.length - 1;
       const pl = room.board[idx];
-      let flyOrient = 'along';
+      let flyOrient =
+        lastSnakeLayout[idx] && lastSnakeLayout[idx].orient ? lastSnakeLayout[idx].orient : 'along';
       if (pl) {
         const ok = (pl.domino[0] === a && pl.domino[1] === b) || (pl.domino[0] === b && pl.domino[1] === a);
-        if (ok) flyOrient = boardTileOrientation(room.board, idx, pl);
+        if (!ok) flyOrient = 'along';
       }
       requestAnimationFrame(() => {
         runTileFlyAnimation(fromRect, targetEl, a, b, flyOrient, () => {
@@ -778,25 +916,62 @@
       const frame = qs('#frame');
       const scaleEl = qs('#chainScale');
       chain.innerHTML = '';
+      lastSnakeLayout = [];
+      const padPxChain = 10;
       if (!room || !room.board || !room.board.length) {
+        chain.style.width = '';
+        chain.style.height = '';
         scaleEl.style.transform = 'scale(1)';
         requestAnimationFrame(() => updateDropZones());
         return;
       }
-      room.board.forEach((pl, idx) => {
-        const [a, b] = pl.domino;
+      const halfPx = measureHalfPx(chain);
+      const scaleW = scaleEl.getBoundingClientRect().width || frame.clientWidth * 0.55;
+      const fw = Math.max(scaleW - 24, 80);
+      const fh = Math.max(frame.clientHeight - 40, 80);
+      const hx = Math.max(halfPx, 8);
+      const placements = computeSnakeLayout(room.board, fw / hx, fh / hx);
+      lastSnakeLayout = placements.map((p) => ({ ...p }));
+
+      let buMinX = Infinity;
+      let buMinY = Infinity;
+      let buMaxX = -Infinity;
+      let buMaxY = -Infinity;
+      placements.forEach((p, ix) => {
+        const dbl = isDoubleDomino(room.board[ix].domino);
+        const bx = snakeTileBoundsUx(p.cx, p.cy, dbl, p.orient);
+        buMinX = Math.min(buMinX, bx.mnX);
+        buMinY = Math.min(buMinY, bx.mnY);
+        buMaxX = Math.max(buMaxX, bx.mxX);
+        buMaxY = Math.max(buMaxY, bx.mxY);
+      });
+
+      const WaltPx = halfPx * 2;
+      const HalPx = halfPx;
+
+      placements.forEach((pl, idx) => {
+        const [a, b] = room.board[idx].domino;
         const tile = dominoEl(a, b);
         tile.classList.add('board-tile');
-        const o = boardTileOrientation(room.board, idx, pl);
-        tile.classList.add(o === 'along' ? 'orient-along' : 'orient-cross');
+        tile.classList.add(pl.orient === 'along' ? 'orient-along' : 'orient-cross');
+        const cxPx = (pl.cx - buMinX) * halfPx + padPxChain;
+        const cyPx = (pl.cy - buMinY) * halfPx + padPxChain;
+        tile.style.left = `${cxPx - WaltPx / 2}px`;
+        tile.style.top = `${cyPx - HalPx / 2}px`;
         chain.appendChild(tile);
       });
+
+      const chainW = (buMaxX - buMinX) * halfPx + padPxChain * 2;
+      const chainH = (buMaxY - buMinY) * halfPx + padPxChain * 2;
+      chain.style.width = `${Math.max(chainW, 40)}px`;
+      chain.style.height = `${Math.max(chainH, 40)}px`;
+
       requestAnimationFrame(() => {
-        const fw = frame.clientWidth - 24;
-        const fh = frame.clientHeight - 24;
-        const cw = chain.scrollWidth || 1;
-        const ch = chain.scrollHeight || 1;
-        const s = Math.min(1, fw / cw, fh / ch, 1);
+        const cw = chain.offsetWidth || 1;
+        const ch = chain.offsetHeight || 1;
+        const innerW = Math.max(scaleEl.clientWidth - 20, 40);
+        const innerH = Math.max(scaleEl.clientHeight - 20, 40);
+        const s = Math.min(1, innerW / cw, innerH / ch, 1);
         scaleEl.style.transform = `scale(${s})`;
         updateDropZones();
       });
@@ -860,8 +1035,17 @@
       const myTurn = room.turn === socket.id && room.gamePhase === 'play';
       hand.forEach((d) => {
         const node = dominoEl(d[0], d[1]);
+        const handMuted =
+          !myTurn ||
+          (myTurn &&
+            selected &&
+            sameDom(selected, d) &&
+            legalResolved &&
+            legalSides.length === 0);
+        if (handMuted) node.classList.add('hand-muted');
         if (selected && sameDom(selected, d)) node.classList.add('selected');
-        if (myTurn && selected && sameDom(selected, d) && legalResolved && legalSides.length === 0) node.classList.add('unplayable');
+        if (myTurn && selected && sameDom(selected, d) && legalResolved && legalSides.length === 0)
+          node.classList.add('unplayable');
         node.onclick = () => {
           if (room.turn !== socket.id || room.gamePhase !== 'play') return;
           selected = d;
