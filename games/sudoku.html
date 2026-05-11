@@ -67,7 +67,7 @@ body.dark kbd{border-color:#4b5f7a;background:#2a3444}
 <div class="tools"><button id="pencilBtn" onclick="togglePencil()">✎ Pencil: Off</button><button class="danger" onclick="eraseSelected()">Erase</button></div>
 <div class="pad" id="pad"></div>
 <div id="status" class="status"></div>
-<p class="small">Click a cell for a row+column cross to the edges. If the cell shows a digit, all matching digits highlight and the full 3×3 box is shaded. Given clues are dark; your entries are lighter blue. Completed number buttons hide. <kbd>P</kbd> pencil · <kbd>E</kbd>/<kbd>M</kbd>/<kbd>H</kbd> easy/medium/hard · digits to enter · <kbd>Backspace</kbd> erase.</p>
+<p class="small">Click a cell for a row+column cross to the edges. If the cell shows a digit, all matching digits highlight and the full 3×3 box is shaded. Given clues are dark; your entries are lighter blue. Completed number buttons hide. Pencil marks may repeat in a row, column, or box until you enter the correct digit in the right cell—then that digit is removed from pencils in that row, column, and box. <kbd>P</kbd> pencil · <kbd>E</kbd>/<kbd>M</kbd>/<kbd>H</kbd> easy/medium/hard · digits to enter · <kbd>Backspace</kbd> erase.</p>
 </main>
 <script>
 const boardEl=document.getElementById('board'),statusEl=document.getElementById('status'),padEl=document.getElementById('pad'),pencilBtn=document.getElementById('pencilBtn');
@@ -98,16 +98,7 @@ function inSameBox(r,c,rr,cc){return Math.floor(r/3)===Math.floor(rr/3)&&Math.fl
 function isNumberComplete(n){let count=0;for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(getDisplay(r,c)===n&&solution[r][c]===n)count++;return count===9}
 function renderPad(){padEl.innerHTML='';for(let n=1;n<=9;n++){if(isNumberComplete(n))continue;const b=document.createElement('button');b.className='num';b.textContent=n;b.onclick=()=>placeNumber(n);padEl.appendChild(b)}}
 function updateCompletedLocks(){for(let n=1;n<=9;n++){if(isNumberComplete(n)){for(let r=0;r<9;r++)for(let c=0;c<9;c++){notes[r][c].delete(n);if(values[r][c]===n&&solution[r][c]===n)locked[r][c]=true}}}}
-/** Remove pencil mark n from all other cells in row r, column c, and same 3×3 box (excluding r,c). */
-function removePencilFromPeers(n,r,c){
-  for(let i=0;i<9;i++){
-    if(i!==c)notes[r][i].delete(n);
-    if(i!==r)notes[i][c].delete(n);
-  }
-  const br=Math.floor(r/3)*3,bc=Math.floor(c/3)*3;
-  for(let rr=br;rr<br+3;rr++)for(let cc=bc;cc<bc+3;cc++)if(rr!==r||cc!==c)notes[rr][cc].delete(n);
-}
-/** Remove pencil n from every cell in row, column, and box (for a placed full digit). */
+/** Remove pencil n from every cell in row, column, and box (when a correct digit is placed). */
 function stripAllNotesForDigit(n,r,c){
   for(let i=0;i<9;i++){notes[r][i].delete(n);notes[i][c].delete(n)}
   const br=Math.floor(r/3)*3,bc=Math.floor(c/3)*3;
@@ -170,13 +161,12 @@ function placeNumber(n){
   if(puzzle[r][c]||locked[r][c])return;
   if(pencil){
     if(values[r][c])return;
-    if(notes[r][c].has(n))notes[r][c].delete(n);
-    else{notes[r][c].add(n);removePencilFromPeers(n,r,c)}
+    notes[r][c].has(n)?notes[r][c].delete(n):notes[r][c].add(n);
   }else{
     values[r][c]=n;
     selectionDigit=n;
     notes[r][c].clear();
-    stripAllNotesForDigit(n,r,c);
+    if(n===solution[r][c])stripAllNotesForDigit(n,r,c);
     if(n!==solution[r][c])statusEl.textContent='Wrong spot.';
     else{statusEl.textContent='';if(isSolved())statusEl.textContent='Correct! You solved it.'}
   }
