@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Domino (offline) | noneface.live</title>
+  <style>
+    :root {
+      --bg-deep: #071428;
+      --bg-mid: #0e2748;
+      --panel: #143a6e;
+      --panel-light: #1f4d8c;
+      --accent: #3aa0ff;
+      --accent-soft: rgba(58, 160, 255, 0.25);
+      --text: #f2f7ff;
+      --muted: #8aa4c8;
+      --good: #3ecf8e;
+      --warn: #ffd447;
+      --tile-board: #ffffff;
+      --tile-hand-muted: #5a677a;
+      --divider: rgba(0, 0, 0, 0.12);
+      --domino-half: min(10.5vw, 34px);
+      --domino-radius: min(18px, 5.2vw);
+      --pip-size: clamp(4px, 1.25vw, 6px);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(120% 80% at 50% 0%, var(--bg-mid), var(--bg-deep));
+      color: var(--text);
+      overflow-x: hidden;
+    }
+    a { color: var(--accent); }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      gap: 10px;
+    }
+    .topbar a, .topbar button {
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: var(--panel);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .scoreboard { display: flex; gap: 10px; flex: 1; justify-content: center; flex-wrap: wrap; }
+    .score-pill {
+      min-width: 120px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, var(--panel-light), var(--panel));
+      border: 1px solid rgba(255,255,255,0.1);
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    .score-pill .label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .score-pill .nums { font-size: 1.45rem; font-weight: 800; margin-top: 2px; }
+    .score-pill .nums span { color: var(--warn); }
+    .lobby {
+      max-width: 420px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+    .lobby h1 { font-size: 1.5rem; margin: 0 0 12px; }
+    .field { margin: 10px 0; }
+    .field label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+    }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn {
+      width: 100%;
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 12px;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+      background: linear-gradient(180deg, var(--accent), #1e6fd0);
+      color: #041018;
+    }
+    .btn.secondary { background: var(--panel-light); color: var(--text); }
+    #gameRoot { display: none; flex-direction: column; height: 100vh; padding-bottom: 8px; }
+    #gameRoot.active { display: flex; }
+    .opponents { padding: 8px 12px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+    .opp {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-radius: 12px;
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 0.88rem;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+    .board-row {
+      flex: 1; display: flex; gap: 8px; padding: 0 10px;
+      min-height: 0; align-items: stretch;
+    }
+    .frame-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .frame-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; padding-left: 4px; }
+    .frame {
+      flex: 1; min-height: 220px; max-height: min(52vh, 560px);
+      background: linear-gradient(180deg, #4a8fd4, #2e6bb5);
+      border-radius: 20px;
+      border: 2px solid rgba(255,255,255,0.2);
+      box-shadow: inset 0 0 32px rgba(0,0,0,0.12);
+      overflow: hidden; position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .frame-table {
+      display: flex; flex-direction: row; align-items: center; justify-content: center;
+      width: 100%; height: 100%; gap: 8px; padding: 10px; min-height: 0;
+    }
+    .drop-slot {
+      flex: 0 0 44px; align-self: stretch; max-height: 100%; min-height: 72px;
+      border: 2px dashed rgba(58, 160, 255, 0.5); border-radius: 14px;
+      background: rgba(58, 160, 255, 0.14); cursor: pointer;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease;
+    }
+    .drop-slot.active { opacity: 1; pointer-events: auto; box-shadow: 0 0 0 2px var(--accent), 0 0 22px rgba(58, 160, 255, 0.35); }
+    .drop-slot:active { transform: scale(0.97); }
+    .chain-scale {
+      transform-origin: center center; transition: transform 0.25s ease;
+      display: flex; align-items: center; justify-content: center;
+      padding: 12px; flex: 1; min-width: 0; min-height: 0;
+    }
+    .chain { position: relative; flex: 1; min-width: 120px; min-height: 120px; }
+    .bone-col {
+      width: 56px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center;
+      gap: 4px; padding: 8px 4px; border-radius: 14px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); overflow: hidden;
+    }
+    .bone-col .cap { font-size: 0.65rem; color: var(--muted); text-align: center; }
+    .bone-stack {
+      flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column-reverse;
+      align-items: center; gap: 2px; overflow: hidden; justify-content: flex-start;
+    }
+    .bone-tile {
+      width: 36px; height: 18px; border-radius: 4px;
+      background: linear-gradient(180deg, #5b7aaf, #3a5588);
+      border: 1px solid rgba(255,255,255,0.25); flex-shrink: 0;
+    }
+    .domino {
+      display: flex; background: var(--tile-board); border-radius: var(--domino-radius);
+      border: none; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22), 0 1px 0 rgba(255, 255, 255, 0.85) inset;
+      overflow: hidden; flex-shrink: 0;
+    }
+    .domino.hand-muted {
+      background: var(--tile-hand-muted);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+    .domino.hand-muted .pip { background: #0a0a0a; }
+    .domino .half {
+      width: var(--domino-half); height: var(--domino-half); aspect-ratio: 1 / 1;
+      display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+      padding: 4px; gap: 2px;
+    }
+    .domino .half:first-child { border-right: 1px solid var(--divider); }
+    .pip { width: var(--pip-size); height: var(--pip-size); border-radius: 50%; background: #0a0a0a; align-self: center; justify-self: center; }
+    .hand-wrap { padding: 10px 12px 14px; background: linear-gradient(0deg, rgba(0,0,0,0.35), transparent); }
+    .hand-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    .hand { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: flex-end; }
+    .hand .domino { cursor: pointer; transform: rotate(90deg); transform-origin: center center; }
+    .hand .domino.selected { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: var(--domino-radius); }
+    .hand .domino.unplayable { opacity: 0.72; filter: saturate(0.85); }
+    .chain .domino.board-tile {
+      position: absolute; transform-origin: center center;
+      transition: transform 0.22s ease, left 0.2s ease, top 0.2s ease;
+      margin: 0; z-index: 1;
+    }
+    .chain .domino.board-tile.orient-along { transform: rotate(0deg); }
+    .chain .domino.board-tile.orient-cross { transform: rotate(90deg); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 6px 10px; }
+    .toolbar button {
+      padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15);
+      background: var(--panel); color: var(--text); font-weight: 600; cursor: pointer;
+    }
+    .status { text-align: center; min-height: 22px; font-size: 0.9rem; color: var(--muted); padding: 4px; }
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: none; align-items: center; justify-content: center; z-index: 50; }
+    .modal-bg.show { display: flex; }
+    .modal { background: var(--panel); padding: 20px; border-radius: 16px; max-width: 360px; text-align: center; }
+    .tile-fly-hide { opacity: 0 !important; transition: opacity 0.15s ease; }
+    #flyLayer { position: fixed; inset: 0; pointer-events: none; z-index: 10000; }
+    .menu-hint { font-size: 0.85rem; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <div class="topbar" id="topbarMenu" style="display:flex">
+    <a href="../index.html">← Home</a>
+    <a href="index.html">Online domino →</a>
+  </div>
+
+  <div class="lobby" id="menu">
+    <h1>Domino — offline</h1>
+    <p class="menu-hint">Block rules: draw until you can play or the boneyard is empty, then pass. Same loss cap and entry score as online.</p>
+    <div class="field">
+      <label>Mode</label>
+      <select id="offlineMode">
+        <option value="ai">Play vs computer</option>
+        <option value="hot">Hot seat (2 players, one device)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label id="labelP1">Your name</label>
+      <input id="nameP1" type="text" maxlength="24" value="You" />
+    </div>
+    <div class="field" id="wrapP2">
+      <label id="labelP2">Player 2 name</label>
+      <input id="nameP2" type="text" maxlength="24" value="Guest" />
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Loss cap</label>
+        <input id="targetScore" type="number" min="1" value="100" />
+      </div>
+      <div class="field">
+        <label>Entry score</label>
+        <input id="entryScore" type="number" min="0" value="21" />
+      </div>
+    </div>
+    <button type="button" class="btn" id="btnStartOffline">Start game</button>
+  </div>
+
+  <div id="gameRoot">
+    <div class="topbar" id="topbarGame">
+      <a href="#" id="linkQuit">← Menu</a>
+      <div class="scoreboard" id="scoreboard"></div>
+      <button type="button" id="btnPass" style="display:none">Pass</button>
+    </div>
+    <div class="opponents" id="opponents"></div>
+    <div class="board-row">
+      <div class="frame-wrap">
+        <div class="frame-label">Table</div>
+        <div class="frame" id="frame">
+          <div class="frame-table" id="frameTable">
+            <button type="button" class="drop-slot drop-left" id="dropLeft" aria-label="Play on left" hidden></button>
+            <div class="chain-scale" id="chainScale">
+              <div class="chain" id="chain"></div>
+            </div>
+            <button type="button" class="drop-slot drop-right" id="dropRight" aria-label="Play on right" hidden></button>
+          </div>
+        </div>
+      </div>
+      <aside class="bone-col" aria-label="Boneyard">
+        <div class="cap">Boneyard</div>
+        <div class="bone-stack" id="boneStack"></div>
+        <div class="cap" id="boneCount">0</div>
+      </aside>
+    </div>
+    <div class="status" id="roundMsg"></div>
+    <div class="toolbar" id="toolbar"></div>
+    <div class="hand-wrap">
+      <div class="hand-title" id="handTitle">Your hand — tap a tile to play</div>
+      <div class="hand" id="hand"></div>
+    </div>
+    <div class="status" id="gameStatus"></div>
+  </div>
+
+  <div class="modal-bg" id="modal">
+    <div class="modal">
+      <h2 id="modalTitle">Game over</h2>
+      <p id="modalBody"></p>
+      <button type="button" class="btn" id="modalClose" style="margin-top:12px">OK</button>
+    </div>
+  </div>
+  <div id="flyLayer" aria-hidden="true"></div>
+
+  <script>
+    const qs = (s) => document.querySelector(s);
+
+    const PIP_CELLS = {
+      0: [], 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8],
+      5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],
+    };
+    function halfEl(n) {
+      const g = document.createElement('div');
+      g.className = 'half';
+      for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('div');
+        if ((PIP_CELLS[n] || []).includes(i)) {
+          const p = document.createElement('div');
+          p.className = 'pip';
+          cell.appendChild(p);
+        }
+        g.appendChild(cell);
+      }
+      return g;
+    }
+    function dominoEl(a, b) {
+      const d = document.createElement('div');
+      d.className = 'domino';
+      d.appendChild(halfEl(a));
+      d.appendChild(halfEl(b));
+      return d;
+    }
+
+    function isDoubleDomino(d) {
+      return d && d[0] === d[1];
+    }
+    const rotFwdCW = (f) => [f[1], -f[0]];
+    const rotFwdCCW = (f) => [-f[1], f[0]];
+    function orientAlongCrossFromIncoming(incoming, isDouble) {
+      const horiz = incoming[0] !== 0;
+      if (!isDouble) return horiz ? 'along' : 'cross';
+      return horiz ? 'cross' : 'along';
+    }
+    function tileCornersUnit(cx, cy, forward, isDouble) {
+      const [fx, fy] = forward;
+      const px = -fy;
+      const py = fx;
+      const corners = [];
+      if (!isDouble) {
+        for (const sf of [-1, 1]) {
+          for (const sp of [-0.5, 0.5]) {
+            corners.push([cx + sf * fx + sp * px, cy + sf * fy + sp * py]);
+          }
+        }
+      } else {
+        for (const sp of [-1, 1]) {
+          for (const sf of [-0.5, 0.5]) {
+            corners.push([cx + sp * px + sf * fx, cy + sp * py + sf * fy]);
+          }
+        }
+      }
+      return corners;
+    }
+    function bboxUnit(layout) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const t of layout) {
+        for (const [x, y] of tileCornersUnit(t.cx, t.cy, t.forward, t.isDouble)) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+      return { minX, minY, maxX, maxY };
+    }
+    function bboxFits(b, maxW, maxH, pad) {
+      const w = b.maxX - b.minX;
+      const h = b.maxY - b.minY;
+      return w <= maxW - pad * 2 && h <= maxH - pad * 2;
+    }
+    function computeSnakeLayout(board, maxUnitsW, maxUnitsH, padUnits) {
+      if (!board || !board.length) return [];
+      const pad = padUnits ?? 1.75;
+      const limW = Math.max(maxUnitsW || 999, pad * 2 + 4);
+      const limH = Math.max(maxUnitsH || 999, pad * 2 + 4);
+      function build(seedToNext) {
+        const rows = [];
+        let toNext = [...seedToNext];
+        let cx = 0;
+        let cy = 0;
+        for (let i = 0; i < board.length; i++) {
+          const isD = isDoubleDomino(board[i].domino);
+          const axisForOrient = i === 0 ? toNext : rows[i - 1].toNext;
+          rows.push({ cx, cy, toNext: [...toNext], isDouble: isD, orient: orientAlongCrossFromIncoming(axisForOrient, isD) });
+          if (i === board.length - 1) break;
+          const trySeg = (seg) => {
+            const nx = cx + seg[0] * 2;
+            const ny = cy + seg[1] * 2;
+            const cand = rows.slice(0, -1);
+            const lastUpdated = { ...rows[rows.length - 1], toNext: [...seg] };
+            cand.push(lastUpdated);
+            const isDn = isDoubleDomino(board[i + 1].domino);
+            cand.push({
+              cx: nx, cy: ny, toNext: [...seg], isDouble: isDn,
+              orient: orientAlongCrossFromIncoming(seg, isDn),
+            });
+            const bb2 = bboxUnit(
+              cand.map((t, j) => ({
+                cx: t.cx, cy: t.cy,
+                forward: j === 0 ? t.toNext : cand[j - 1].toNext,
+                isDouble: t.isDouble,
+              })),
+            );
+            return { nx, ny, seg, ok: bboxFits(bb2, limW, limH, pad) };
+          };
+          let best = trySeg(toNext);
+          if (!best.ok) {
+            const t1 = trySeg(rotFwdCW(toNext));
+            const t2 = trySeg(rotFwdCCW(toNext));
+            if (t1.ok) best = t1;
+            else if (t2.ok) best = t2;
+            else best = t1;
+          }
+          rows[rows.length - 1].toNext = [...best.seg];
+          cx = best.nx;
+          cy = best.ny;
+          toNext = best.seg;
+        }
+        const list = rows.map(({ cx: x, cy: y, orient: o }) => ({ cx: x, cy: y, orient: o }));
+        list._bbox = bboxUnit(
+          rows.map((t, j) => ({
+            cx: t.cx, cy: t.cy,
+            forward: j === 0 ? t.toNext : rows[j - 1].toNext,
+            isDouble: t.isDouble,
+          })),
+        );
+        return list;
+      }
+      const candidates = [build([1, 0]), build([-1, 0]), build([0, 1]), build([0, -1])];
+      let bestLayout = candidates[0].map((tile) => ({ cx: tile.cx, cy: tile.cy, orient: tile.orient }));
+      let bestScore = Infinity;
+      for (const L of candidates) {
+        const b = L._bbox;
+        const area = (b.maxX - b.minX) * (b.maxY - b.minY);
+        const fits = bboxFits(b, limW, limH, pad);
+        const score = fits ? area : area + 1e6;
+        if (score < bestScore) {
+          bestScore = score;
+          bestLayout = L.map((tile) => ({ cx: tile.cx, cy: tile.cy, orient: tile.orient }));
+        }
+      }
+      return bestLayout;
+    }
+
+    function snakeTileBoundsUx(cx, cy, isDouble, orient) {
+      if (!isDouble && orient === 'along') return { mnX: cx - 1, mxX: cx + 1, mnY: cy - 0.5, mxY: cy + 0.5 };
+      if (!isDouble && orient === 'cross') return { mnX: cx - 0.5, mxX: cx + 0.5, mnY: cy - 1, mxY: cy + 1 };
+      if (isDouble && orient === 'cross') return { mnX: cx - 0.5, mxX: cx + 0.5, mnY: cy - 1, mxY: cy + 1 };
+      return { mnX: cx - 1, mxX: cx + 1, mnY: cy - 0.5, mxY: cy + 0.5 };
+    }
+    function measureHalfPx(host) {
+      const probe = dominoEl(6, 6);
+      probe.setAttribute('aria-hidden', 'true');
+      probe.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;top:0;pointer-events:none;margin:0;';
+      host.appendChild(probe);
+      const w = probe.querySelector('.half')?.getBoundingClientRect().width || 34;
+      probe.remove();
+      return w;
+    }
+
+    function same(a, b) {
+      return a && b && ((a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]));
+    }
+    function sameDom(a, b) {
+      return same(a, b);
+    }
+    function shuffledDeck() {
+      const s = [];
+      for (let i = 0; i <= 6; i++) for (let j = i; j <= 6; j++) s.push([i, j]);
+      for (let i = s.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [s[i], s[j]] = [s[j], s[i]];
+      }
+      return s;
+    }
+    function edges(g) {
+      if (!g.board.length) return { left: null, right: null };
+      return { left: g.board[0].domino[0], right: g.board[g.board.length - 1].domino[1] };
+    }
+    function orientPlay(g, d, side) {
+      if (!g.board.length) return { ok: true, domino: [...d] };
+      const { left, right } = edges(g);
+      const [a, b] = d;
+      if (side === 'left') {
+        if (b === left) return { ok: true, domino: [a, b] };
+        if (a === left) return { ok: true, domino: [b, a] };
+      }
+      if (side === 'right') {
+        if (a === right) return { ok: true, domino: [a, b] };
+        if (b === right) return { ok: true, domino: [b, a] };
+      }
+      return { ok: false };
+    }
+    function legalSidesFor(g, d) {
+      if (!g.board.length) {
+        if (g.firstRequired && !same(d, g.firstRequired)) return [];
+        return ['start'];
+      }
+      const s = [];
+      if (orientPlay(g, d, 'left').ok) s.push('left');
+      if (orientPlay(g, d, 'right').ok) s.push('right');
+      return s;
+    }
+    function hasPlay(g, pIdx) {
+      return g.players[pIdx].hand.some((d) => legalSidesFor(g, d).length > 0);
+    }
+    function startInfo(players) {
+      const six = players.find((p) => p.hand.some((d) => d[0] === 6 && d[1] === 6));
+      if (six) return { starterIdx: players.indexOf(six), required: [6, 6] };
+      let best = null;
+      players.forEach((p) => {
+        p.hand.forEach((d) => {
+          if (d[0] === d[1] && (!best || d[0] > best.domino[0])) best = { player: p, domino: [...d] };
+        });
+      });
+      if (best) return { starterIdx: players.indexOf(best.player), required: best.domino };
+      let high = null;
+      players.forEach((p) => {
+        p.hand.forEach((d) => {
+          const sum = d[0] + d[1];
+          if (!high || sum > high.sum) high = { player: p, domino: [...d], sum };
+        });
+      });
+      return { starterIdx: players.indexOf(high.player), required: high.domino };
+    }
+    function openingRequiredForPlayer(hand) {
+      const six = hand.find((d) => d[0] === 6 && d[1] === 6);
+      if (six) return [6, 6];
+      let best = null;
+      for (const d of hand) {
+        if (d[0] === d[1] && (!best || d[0] > best[0])) best = [...d];
+      }
+      if (best) return best;
+      let pick = hand[0];
+      let bestSum = pick ? pick[0] + pick[1] : 0;
+      for (const d of hand) {
+        const s = d[0] + d[1];
+        if (s > bestSum) {
+          pick = d;
+          bestSum = s;
+        }
+      }
+      return pick ? [...pick] : [0, 0];
+    }
+    function countDoubles(hand) {
+      return hand.filter((d) => d[0] === d[1]).length;
+    }
+    function teamPipSum(players, teamNum) {
+      let sum = 0;
+      players.forEach((p) => {
+        if (p.team !== teamNum) return;
+        p.hand.forEach((d) => {
+          sum += d[0] + d[1];
+        });
+      });
+      return sum;
+    }
+
+    /** @type {{ mode:'ai'|'hot', phase:'play'|'over', board:any[], boneyard:number[][], players:any[], turn:number, targetScore:number, entryScore:number, teamLoss:any, firstRequired:number[]|null, consecutivePasses:number, lastPlayedBy:number|null, pendingStarterIdx:number|null }} */
+    let game = null;
+    let room = null;
+    let hand = [];
+    let selected = null;
+    let legalSides = [];
+    let legalResolved = false;
+    let lastHandTileEl = null;
+    let pendingFly = null;
+    let lastSnakeLayout = [];
+    let aiTimer = null;
+
+    function buildRoomPub() {
+      if (!game) return null;
+      return {
+        code: 'OFFLINE',
+        started: game.phase === 'play',
+        mode: '1v1',
+        players: game.players.map((p, i) => ({
+          id: i,
+          pid: i,
+          name: p.name,
+          team: p.team,
+          handCount: p.hand.length,
+          connected: true,
+        })),
+        board: game.board,
+        turn: game.turn,
+        boneyardCount: game.boneyard.length,
+        teamLoss: game.teamLoss,
+        targetScore: game.targetScore,
+        entryScore: game.entryScore,
+        firstRequired: game.firstRequired,
+        gamePhase: game.phase === 'play' ? 'play' : 'lobby',
+      };
+    }
+
+    function collectPool() {
+      const pool = [];
+      game.players.forEach((p) => {
+        while (p.hand.length) pool.push(p.hand.pop());
+      });
+      while (game.board.length) pool.push(game.board.pop().domino);
+      while (game.boneyard.length) pool.push(game.boneyard.pop());
+      return pool;
+    }
+    function shuffleInPlace(a) {
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+    function dealFromPool(pool) {
+      game.board = [];
+      game.players.forEach((p) => {
+        p.hand = [];
+      });
+      for (let k = 0; k < 7; k++) {
+        game.players.forEach((p) => {
+          if (pool.length) p.hand.push(pool.shift());
+        });
+      }
+      game.boneyard = pool;
+    }
+    function dealFresh() {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const pool = shuffledDeck();
+        dealFromPool(pool);
+        const bad = game.players.find((p) => countDoubles(p.hand) >= 5);
+        if (!bad) return;
+      }
+    }
+
+    function syncRoom() {
+      room = buildRoomPub();
+      hand = game.players[handSeatIndex()].hand.slice();
+    }
+
+    function handSeatIndex() {
+      if (game.mode === 'hot') return game.turn;
+      return 0;
+    }
+
+    function myTurn() {
+      return game && game.phase === 'play' && game.turn === handSeatIndex();
+    }
+
+    function autoDrawCurrent() {
+      const p = game.players[game.turn];
+      while (!hasPlay(game, game.turn) && game.boneyard.length) {
+        p.hand.push(game.boneyard.shift());
+      }
+    }
+
+    function finishRoundByEmptyHand(winnerIdx) {
+      const winner = game.players[winnerIdx];
+      const loserTeam = winner.team === 1 ? 2 : 1;
+      const loserPips = teamPipSum(game.players, loserTeam);
+      let applied = 0;
+      if (loserPips >= game.entryScore) {
+        game.teamLoss[loserTeam] += loserPips;
+        applied = loserPips;
+      }
+      qs('#roundMsg').textContent =
+        applied > 0
+          ? `${winner.name} went out. Team ${loserTeam} loses ${loserPips} pips (+${applied} toward cap; entry ${game.entryScore}). New deal — ${winner.name} starts.`
+          : `${winner.name} went out. Team ${loserTeam} has ${loserPips} pips (below entry). No loss points. New deal — ${winner.name} starts.`;
+      if (game.teamLoss[loserTeam] >= game.targetScore) {
+        const winTeam = loserTeam === 1 ? 2 : 1;
+        const names = game.players
+          .filter((p) => p.team === winTeam)
+          .map((p) => p.name)
+          .join(' & ');
+        game.phase = 'over';
+        showModal('Game over', `${names} win — team ${loserTeam} reached ${game.targetScore} loss points.`);
+        refreshAll();
+        return;
+      }
+      beginRound(winnerIdx);
+    }
+
+    function resolveBlockedRound() {
+      const t1 = teamPipSum(game.players, 1);
+      const t2 = teamPipSum(game.players, 2);
+      game.consecutivePasses = 0;
+      if (t1 === t2) {
+        qs('#roundMsg').textContent = 'Blocked round — tied pip totals. No points. New deal.';
+        beginRound(game.lastPlayedBy != null ? game.lastPlayedBy : 0);
+        return;
+      }
+      const loserTeam = t1 > t2 ? 1 : 2;
+      const loserPips = loserTeam === 1 ? t1 : t2;
+      let applied = 0;
+      if (loserPips >= game.entryScore) {
+        game.teamLoss[loserTeam] += loserPips;
+        applied = loserPips;
+      }
+      qs('#roundMsg').textContent =
+        applied > 0
+          ? `Blocked round — team ${loserTeam} loses (${loserPips} pips). +${applied} toward cap (entry ${game.entryScore}).`
+          : `Blocked round — team ${loserTeam} would lose ${loserPips} pips, below entry ${game.entryScore}. No points counted.`;
+      if (game.teamLoss[loserTeam] >= game.targetScore) {
+        const winTeam = loserTeam === 1 ? 2 : 1;
+        const names = game.players
+          .filter((p) => p.team === winTeam)
+          .map((p) => p.name)
+          .join(' & ');
+        game.phase = 'over';
+        showModal('Game over', `${names} win — team ${loserTeam} reached ${game.targetScore} loss points.`);
+        refreshAll();
+        return;
+      }
+      const starter = game.lastPlayedBy != null ? game.lastPlayedBy : 0;
+      beginRound(starter);
+    }
+
+    function beginRound(nextStarterIdx) {
+      let pool = collectPool();
+      if (!pool.length) pool = shuffledDeck();
+      else shuffleInPlace(pool);
+      for (let z = 0; z < 25; z++) {
+        dealFromPool(pool);
+        const bad = game.players.find((p) => countDoubles(p.hand) >= 5);
+        if (!bad) break;
+        pool = collectPool();
+        shuffleInPlace(pool);
+      }
+      const s = startInfo(game.players);
+      let starterIdx = s.starterIdx;
+      let required = [...s.required];
+      if (nextStarterIdx != null) {
+        const fp = game.players[nextStarterIdx];
+        if (fp) {
+          starterIdx = nextStarterIdx;
+          required = openingRequiredForPlayer(fp.hand);
+        }
+      }
+      game.turn = starterIdx;
+      game.firstRequired = required;
+      game.lastPlayedBy = null;
+      game.consecutivePasses = 0;
+      game.board = [];
+      syncRoom();
+      refreshAll();
+      ensureTurnCanAct();
+    }
+
+    function ensureTurnCanAct() {
+      if (!game || game.phase !== 'play') return;
+      let guard = 0;
+      while (guard++ < 40) {
+        autoDrawCurrent();
+        if (hasPlay(game, game.turn)) {
+          game.consecutivePasses = 0;
+          syncRoom();
+          refreshAll();
+          scheduleAiIfNeeded();
+          return;
+        }
+        if (game.boneyard.length) continue;
+        game.consecutivePasses = (game.consecutivePasses || 0) + 1;
+        if (game.consecutivePasses >= 2) {
+          resolveBlockedRound();
+          return;
+        }
+        game.turn = 1 - game.turn;
+      }
+    }
+
+    function scheduleAiIfNeeded() {
+      if (aiTimer) clearTimeout(aiTimer);
+      if (!game || game.phase !== 'play' || game.mode !== 'ai' || game.turn !== 1) return;
+      aiTimer = setTimeout(() => {
+        aiTimer = null;
+        runAiTurn();
+      }, 450);
+    }
+
+    function runAiTurn() {
+      if (!game || game.phase !== 'play' || game.turn !== 1) return;
+      autoDrawCurrent();
+      if (!hasPlay(game, 1)) {
+        game.consecutivePasses = (game.consecutivePasses || 0) + 1;
+        if (game.consecutivePasses >= 2) {
+          resolveBlockedRound();
+          return;
+        }
+        game.turn = 0;
+        syncRoom();
+        refreshAll();
+        ensureTurnCanAct();
+        return;
+      }
+      const p = game.players[1];
+      let best = null;
+      for (let i = 0; i < p.hand.length; i++) {
+        const raw = p.hand[i];
+        const sides = legalSidesFor(game, raw);
+        for (const side of sides) {
+          const sum = raw[0] + raw[1];
+          const score = sum * 10 + (side === 'start' ? 5 : 0);
+          if (!best || score > best.score) best = { i, side, raw, score };
+        }
+      }
+      if (!best) {
+        game.turn = 0;
+        ensureTurnCanAct();
+        return;
+      }
+      const prevLen = game.board.length;
+      applyPlay(1, best.i, best.side);
+      maybeFlyPlacedTile(prevLen, null);
+      syncRoom();
+      refreshAll();
+      ensureTurnCanAct();
+    }
+
+    function applyPlay(playerIdx, handIndex, side) {
+      const p = game.players[playerIdx];
+      const raw = p.hand[handIndex];
+      if (!game.board.length) {
+        p.hand.splice(handIndex, 1);
+        game.board.push({ domino: [...raw], by: playerIdx, side: 'start' });
+      } else {
+        const o = orientPlay(game, raw, side);
+        if (!o.ok) return;
+        p.hand.splice(handIndex, 1);
+        const placed = { domino: o.domino, by: playerIdx, side };
+        if (side === 'left') game.board.unshift(placed);
+        else game.board.push(placed);
+      }
+      game.firstRequired = null;
+      game.lastPlayedBy = playerIdx;
+      game.consecutivePasses = 0;
+      if (!p.hand.length) {
+        finishRoundByEmptyHand(playerIdx);
+        return;
+      }
+      game.turn = 1 - playerIdx;
+    }
+
+    function playFromHand(side, fromEl) {
+      if (!game || game.phase !== 'play' || !selected) return;
+      const seat = handSeatIndex();
+      if (game.turn !== seat) return;
+      const idx = game.players[seat].hand.findIndex((x) => sameDom(x, selected));
+      if (idx < 0) return;
+      const fr = fromEl?.getBoundingClientRect?.();
+      const prevLen = game.board.length;
+      const [a, b] = selected;
+      if (fr && fr.width > 0) pendingFly = { fromRect: fr, side, prevLen, a, b };
+      else pendingFly = null;
+      applyPlay(seat, idx, side);
+      clearPlaySelection();
+      syncRoom();
+      refreshAll();
+      maybeFlyPlacedTile(prevLen, fromEl);
+      ensureTurnCanAct();
+    }
+
+    function passTurn() {
+      if (!game || game.phase !== 'play' || game.turn !== handSeatIndex()) return;
+      autoDrawCurrent();
+      if (hasPlay(game, game.turn) || game.boneyard.length) return;
+      game.consecutivePasses = (game.consecutivePasses || 0) + 1;
+      if (game.consecutivePasses >= 2) {
+        resolveBlockedRound();
+        return;
+      }
+      game.turn = 1 - game.turn;
+      syncRoom();
+      refreshAll();
+      ensureTurnCanAct();
+    }
+
+    function resolveLegalSides(domino) {
+      return legalSidesFor(game, domino);
+    }
+
+    const dropLeft = () => qs('#dropLeft');
+    const dropRight = () => qs('#dropRight');
+
+    function hideDropZones() {
+      [dropLeft(), dropRight()].forEach((el) => {
+        el.hidden = true;
+        el.classList.remove('active');
+      });
+    }
+    function updateDropZones() {
+      const L = dropLeft();
+      const R = dropRight();
+      hideDropZones();
+      if (!myTurn() || !selected || !legalResolved) return;
+      if (legalSides.includes('left')) {
+        L.hidden = false;
+        L.classList.add('active');
+      }
+      if (legalSides.includes('right')) {
+        R.hidden = false;
+        R.classList.add('active');
+      }
+    }
+
+    function clearPlaySelection() {
+      selected = null;
+      legalSides = [];
+      legalResolved = false;
+      lastHandTileEl = null;
+      hideDropZones();
+    }
+
+    function runTileFlyAnimation(fromRect, targetEl, a, b, boardOrient, done) {
+      const layer = qs('#flyLayer');
+      const ghost = dominoEl(a, b);
+      if (boardOrient === 'along' || boardOrient === 'cross') {
+        ghost.classList.add('board-tile', boardOrient === 'along' ? 'orient-along' : 'orient-cross');
+      }
+      ghost.style.position = 'fixed';
+      ghost.style.left = `${fromRect.left}px`;
+      ghost.style.top = `${fromRect.top}px`;
+      ghost.style.width = `${fromRect.width}px`;
+      ghost.style.height = `${fromRect.height}px`;
+      ghost.style.zIndex = '10001';
+      ghost.style.margin = '0';
+      ghost.style.pointerEvents = 'none';
+      ghost.style.boxSizing = 'border-box';
+      layer.appendChild(ghost);
+      const tr = targetEl.getBoundingClientRect();
+      const anim = ghost.animate(
+        [
+          { left: `${fromRect.left}px`, top: `${fromRect.top}px`, width: `${fromRect.width}px`, height: `${fromRect.height}px` },
+          { left: `${tr.left}px`, top: `${tr.top}px`, width: `${tr.width}px`, height: `${tr.height}px` },
+        ],
+        { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+      );
+      anim.onfinish = () => {
+        ghost.remove();
+        if (typeof done === 'function') done();
+      };
+    }
+
+    function maybeFlyPlacedTile(prevBoardLen, fromEl) {
+      if (!pendingFly || !game || game.board.length <= prevBoardLen) {
+        pendingFly = null;
+        return;
+      }
+      const ch = qs('#chain');
+      if (!ch?.children.length) {
+        pendingFly = null;
+        return;
+      }
+      const { fromRect, side, a, b } = pendingFly;
+      const targetEl = side === 'left' ? ch.firstElementChild : ch.lastElementChild;
+      if (!targetEl || !fromRect || fromRect.width < 4) {
+        pendingFly = null;
+        return;
+      }
+      pendingFly = null;
+      targetEl.classList.add('tile-fly-hide');
+      const idx = side === 'left' ? 0 : game.board.length - 1;
+      const pl = game.board[idx];
+      let flyOrient = lastSnakeLayout[idx]?.orient || 'along';
+      if (pl) {
+        const ok = (pl.domino[0] === a && pl.domino[1] === b) || (pl.domino[0] === b && pl.domino[1] === a);
+        if (!ok) flyOrient = 'along';
+      }
+      requestAnimationFrame(() => {
+        runTileFlyAnimation(fromRect, targetEl, a, b, flyOrient, () => {
+          targetEl.classList.remove('tile-fly-hide');
+        });
+      });
+    }
+
+    function renderBoard() {
+      const chain = qs('#chain');
+      const frame = qs('#frame');
+      const scaleEl = qs('#chainScale');
+      chain.innerHTML = '';
+      lastSnakeLayout = [];
+      const padPxChain = 10;
+      if (!room?.board?.length) {
+        chain.style.width = '';
+        chain.style.height = '';
+        scaleEl.style.transform = 'scale(1)';
+        requestAnimationFrame(() => updateDropZones());
+        return;
+      }
+      const halfPx = measureHalfPx(chain);
+      const scaleW = scaleEl.getBoundingClientRect().width || frame.clientWidth * 0.55;
+      const fw = Math.max(scaleW - 24, 80);
+      const fh = Math.max(frame.clientHeight - 40, 80);
+      const hx = Math.max(halfPx, 8);
+      const placements = computeSnakeLayout(room.board, fw / hx, fh / hx);
+      lastSnakeLayout = placements.map((p) => ({ ...p }));
+      let buMinX = Infinity;
+      let buMinY = Infinity;
+      let buMaxX = -Infinity;
+      let buMaxY = -Infinity;
+      placements.forEach((p, ix) => {
+        const dbl = isDoubleDomino(room.board[ix].domino);
+        const bx = snakeTileBoundsUx(p.cx, p.cy, dbl, p.orient);
+        buMinX = Math.min(buMinX, bx.mnX);
+        buMinY = Math.min(buMinY, bx.mnY);
+        buMaxX = Math.max(buMaxX, bx.mxX);
+        buMaxY = Math.max(buMaxY, bx.mxY);
+      });
+      const WaltPx = halfPx * 2;
+      const HalPx = halfPx;
+      placements.forEach((pl, idx) => {
+        const [a, b] = room.board[idx].domino;
+        const tile = dominoEl(a, b);
+        tile.classList.add('board-tile', pl.orient === 'along' ? 'orient-along' : 'orient-cross');
+        const cxPx = (pl.cx - buMinX) * halfPx + padPxChain;
+        const cyPx = (pl.cy - buMinY) * halfPx + padPxChain;
+        tile.style.left = `${cxPx - WaltPx / 2}px`;
+        tile.style.top = `${cyPx - HalPx / 2}px`;
+        chain.appendChild(tile);
+      });
+      const chainW = (buMaxX - buMinX) * halfPx + padPxChain * 2;
+      const chainH = (buMaxY - buMinY) * halfPx + padPxChain * 2;
+      chain.style.width = `${Math.max(chainW, 40)}px`;
+      chain.style.height = `${Math.max(chainH, 40)}px`;
+      requestAnimationFrame(() => {
+        const cw = chain.offsetWidth || 1;
+        const ch = chain.offsetHeight || 1;
+        const innerW = Math.max(scaleEl.clientWidth - 20, 40);
+        const innerH = Math.max(scaleEl.clientHeight - 20, 40);
+        scaleEl.style.transform = `scale(${Math.min(1, innerW / cw, innerH / ch, 1)})`;
+        updateDropZones();
+      });
+    }
+
+    function renderBoneyard() {
+      const n = room?.boneyardCount ?? 0;
+      qs('#boneCount').textContent = String(n);
+      const stack = qs('#boneStack');
+      stack.innerHTML = '';
+      const show = Math.min(n, 14);
+      for (let i = 0; i < show; i++) stack.appendChild(document.createElement('div')).className = 'bone-tile';
+    }
+
+    function renderScoreboard() {
+      if (!room?.started) {
+        qs('#scoreboard').innerHTML = '';
+        return;
+      }
+      const t = room.targetScore || 100;
+      const e1 = room.teamLoss?.[1] ?? 0;
+      const e2 = room.teamLoss?.[2] ?? 0;
+      qs('#scoreboard').innerHTML = `
+        <div class="score-pill"><div class="label">Team 1 · loss pts</div><div class="nums">${e1}<span>/${t}</span></div></div>
+        <div class="score-pill"><div class="label">Team 2 · loss pts</div><div class="nums">${e2}<span>/${t}</span></div></div>
+      `;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderOpponents() {
+      if (!room) return;
+      const seat = handSeatIndex();
+      const other = game.players[1 - seat];
+      qs('#opponents').innerHTML = `
+        <div class="opp"><span class="dot"></span><strong>${escapeHtml(other.name)}</strong> · T${other.team} · ${other.hand.length} tiles</div>
+      `;
+      const cur = game.players[game.turn];
+      if (game.mode === 'hot') {
+        qs('#gameStatus').textContent =
+          game.turn === seat ? `Your turn (${escapeHtml(cur.name)}).` : `Pass device — ${escapeHtml(cur.name)}'s turn.`;
+      } else {
+        qs('#gameStatus').textContent =
+          game.turn === 0 ? 'Your turn.' : `${escapeHtml(cur.name)} is thinking…`;
+      }
+    }
+
+    function renderHand() {
+      const el = qs('#hand');
+      el.innerHTML = '';
+      if (!room?.started) return;
+      const turnNow = myTurn();
+      hand.forEach((d) => {
+        const node = dominoEl(d[0], d[1]);
+        const handMuted =
+          !turnNow ||
+          (turnNow && selected && sameDom(selected, d) && legalResolved && legalSides.length === 0);
+        if (handMuted) node.classList.add('hand-muted');
+        if (selected && sameDom(selected, d)) node.classList.add('selected');
+        if (turnNow && selected && sameDom(selected, d) && legalResolved && legalSides.length === 0) {
+          node.classList.add('unplayable');
+        }
+        node.onclick = () => {
+          if (!myTurn()) return;
+          selected = d;
+          lastHandTileEl = node;
+          legalSides = resolveLegalSides(d);
+          legalResolved = true;
+          if (legalSides.length === 1) {
+            playFromHand(legalSides[0], node);
+            return;
+          }
+          renderHand();
+          updateDropZones();
+        };
+        el.appendChild(node);
+      });
+    }
+
+    function renderToolbar() {
+      const tb = qs('#toolbar');
+      tb.innerHTML = '';
+      if (game?.phase === 'over') {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = 'Play again';
+        b.onclick = () => startOfflineFromMenu();
+        tb.appendChild(b);
+      }
+    }
+
+    function refreshAll() {
+      if (!game) return;
+      room = buildRoomPub();
+      syncRoom();
+      if (game.mode === 'hot') {
+        qs('#handTitle').textContent =
+          game.turn === handSeatIndex()
+            ? `${escapeHtml(game.players[game.turn].name)} — tap a tile to play`
+            : `Pass the device to ${escapeHtml(game.players[game.turn].name)}`;
+      } else {
+        qs('#handTitle').textContent = 'Your hand — tap a tile to play';
+      }
+      renderScoreboard();
+      renderBoard();
+      renderBoneyard();
+      renderOpponents();
+      renderToolbar();
+      renderHand();
+      updateDropZones();
+      qs('#btnPass').style.display = myTurn() && game.phase === 'play' ? 'inline-block' : 'none';
+    }
+
+    function showModal(title, body) {
+      qs('#modalTitle').textContent = title;
+      qs('#modalBody').textContent = body;
+      qs('#modal').classList.add('show');
+    }
+
+    function enterGameView() {
+      qs('#menu').style.display = 'none';
+      qs('#topbarMenu').style.display = 'none';
+      qs('#gameRoot').classList.add('active');
+    }
+
+    function leaveGameView() {
+      if (aiTimer) clearTimeout(aiTimer);
+      aiTimer = null;
+      game = null;
+      room = null;
+      hand = [];
+      clearPlaySelection();
+      qs('#gameRoot').classList.remove('active');
+      qs('#menu').style.display = 'block';
+      qs('#topbarMenu').style.display = 'flex';
+      qs('#modal').classList.remove('show');
+      qs('#roundMsg').textContent = '';
+    }
+
+    function startOfflineFromMenu() {
+      qs('#modal').classList.remove('show');
+      const mode = qs('#offlineMode').value === 'hot' ? 'hot' : 'ai';
+      const n1 = (qs('#nameP1').value || 'You').trim();
+      const n2 = (qs('#nameP2').value || 'Computer').trim();
+      const targetScore = Math.max(1, +qs('#targetScore').value) || 100;
+      const entryScore = Math.max(0, +qs('#entryScore').value) || 21;
+      const p0name = mode === 'ai' ? n1 : n1;
+      const p1name = mode === 'ai' ? 'Computer' : n2;
+
+      game = {
+        mode,
+        phase: 'play',
+        board: [],
+        boneyard: [],
+        players: [
+          { name: p0name, team: 1, hand: [] },
+          { name: p1name, team: 2, hand: [] },
+        ],
+        turn: 0,
+        targetScore,
+        entryScore,
+        teamLoss: { 1: 0, 2: 0 },
+        firstRequired: null,
+        consecutivePasses: 0,
+        lastPlayedBy: null,
+      };
+      dealFresh();
+      const s = startInfo(game.players);
+      game.turn = s.starterIdx;
+      game.firstRequired = [...s.required];
+      game.board = [];
+      game.consecutivePasses = 0;
+      game.lastPlayedBy = null;
+      syncRoom();
+      enterGameView();
+      qs('#roundMsg').textContent = '';
+      refreshAll();
+      ensureTurnCanAct();
+    }
+
+    qs('#offlineMode').onchange = () => {
+      const hot = qs('#offlineMode').value === 'hot';
+      qs('#wrapP2').style.display = hot ? 'block' : 'none';
+      qs('#labelP1').textContent = hot ? 'Player 1 name' : 'Your name';
+      qs('#labelP2').textContent = 'Player 2 name';
+      if (!hot) qs('#nameP2').value = 'Guest';
+    };
+    qs('#offlineMode').dispatchEvent(new Event('change'));
+
+    qs('#btnStartOffline').onclick = () => startOfflineFromMenu();
+    qs('#linkQuit').onclick = (e) => {
+      e.preventDefault();
+      if (game && game.phase === 'play' && !confirm('Leave this game? Progress will be lost.')) return;
+      leaveGameView();
+    };
+    qs('#modalClose').onclick = () => {
+      qs('#modal').classList.remove('show');
+      if (game?.phase === 'over') leaveGameView();
+    };
+
+    qs('#btnPass').onclick = () => passTurn();
+
+    dropLeft().addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (myTurn() && selected && legalSides.includes('left')) playFromHand('left', lastHandTileEl);
+    });
+    dropRight().addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (myTurn() && selected && legalSides.includes('right')) playFromHand('right', lastHandTileEl);
+    });
+
+    window.addEventListener('resize', () => {
+      if (game) renderBoard();
+    });
+  </script>
+</body>
+</html>
